@@ -21,6 +21,13 @@ Notion, MinIO, mem0 + pgvector semantic memory, local Ollama models, and
 LangGraph orchestration. Every intelligence feature reports to a
 conversion-funnel metric so improvements are measured, not vibed.
 
+> **Why "karani"?** *Karani* (kah-RAH-nee) is Swahili for **clerk** —
+> the diligent office worker who files the paperwork, keeps the
+> records, and never misses a deadline. Born in Nairobi, this karani
+> does exactly that for your job hunt: reads every posting, files every
+> application pack, tracks every outcome — and hands the pen back to
+> you for the signature.
+
 ## Install
 
 ```bash
@@ -39,11 +46,11 @@ stored roles after any change.
 - **Quickstart (from source):** below. **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md).
   **Planned work:** [docs/roadmap.md](docs/roadmap.md) (Tier 0 = good
   first issues). **Decisions:** `docs/adrs/`. **License:** MIT.
-- Drive it from any MCP client (25 tools), the CLI (21 verbs), or Slack.
+- Drive it from any MCP client (25 tools), the `karani` CLI (~30 verbs), or Slack.
 
-## Positioning
+## Positioning (the shipped defaults — yours lives in karani.toml)
 
-Two role shapes qualify:
+Two role shapes qualify out of the box:
 
 1. **Companies that hire globally at SF pay bands, regardless of candidate location.**
 2. **Roles that sponsor a visa + relocation** — EU and Japan preferred destinations; local top-of-market comp acceptable there.
@@ -80,15 +87,15 @@ decisions: `docs/adrs/0001-0015`.
 5. **Upsert** — Postgres, batched via `asyncio.gather` on a bounded semaphore. `active=TRUE`, `closed_at=NULL` on every touch.
 6. **Sweep** — jobs not seen for `stale_job_days` (default 10) get `active=FALSE, closed_at=NOW()`. Prevents applying to dead reqs.
 7. **Qualify** (separate command) — top-scored pending rows go to an LLM with your full resume + hints. Default provider is **OpenRouter** with `moonshotai/kimi-k2-thinking` at `reasoning_effort=high`. Returns `fit_score` (0–100), `verdict` (qualified|maybe|skip), evidence-backed strengths, gaps with mitigations, red flags, why-apply, and recommended positioning. Idempotent per resume hash — change your resume and re-qualify.
-8. **Digest** — top qualified/maybe rows for the day, sorted by `fit_score`. Wire this to email/Slack/artifact later.
+8. **Deliver** — autopilot posts full application packs to Slack as review cards; digest + worklist summaries push twice daily; the Notion board mirrors every state change.
 9. **Feedback** — `verdict` command records your reaction (`apply|shortlist|later|skip|applied`) so downstream tuning has ground truth.
 
 ## Configure
 
 ```bash
-cp .env.example .env                          # fill DATABASE_URL + OPENROUTER_API_KEY
+karani init                                   # writes karani.toml (what to hunt, which models)
+cp .env.example .env                          # secrets only: API keys, tokens, DSN
 cp data/resume.md.example data/resume.md      # then edit it — this is YOU
-uv sync                                        # or pip install -e .
 
 # --- ingest + rank ---
 karani run                    # fetch + pre-filter + sweep + discover
@@ -113,11 +120,9 @@ karani actions                # what to do next: review/draft/submit/follow up
 karani funnel                 # response/interview/offer conversion rates
 ```
 
-`karani hourly` runs one full LangGraph pass; `karani hunt` schedules it.
-
-Typical cron: `run` every 2–4h, `qualify` every 4–8h, `digest` in your morning brief.
-
-All tuning knobs are env-driven (see `.env.example` and `config.py`).
+`karani hourly` runs one full LangGraph pass; `karani hunt` schedules it
+hourly. Structure lives in `karani.toml` (see `karani.example.toml`);
+env vars override any knob for one-off experiments.
 
 ## MCP server
 
@@ -166,12 +171,11 @@ karani hunt
 ```
 
 **Every hour** (a LangGraph pass — ADR 0013 — with per-node retry and
-Slack alerts on failure; render the graph with
-`karani hourly  # graph: see docs/adrs/0013`): ingest all sources → qualify the new arrivals (idempotent
+Slack alerts on failure): ingest all sources → qualify the new arrivals (idempotent
 — already-qualified rows cost nothing) → **autopilot** drafts full
 application packs for new top-fit roles and posts each to Slack as a
 review card. Quiet by design: an hour with no new high-fit roles posts
-nothing. Spend is double-bounded — fit floor (`AUTOPILOT_MIN_FIT`, 85),
+nothing. Spend is triple-bounded — fit floor (`AUTOPILOT_MIN_FIT`, 85),
 per-run cap (`AUTOPILOT_MAX_DRAFTS`, 3), and one shared daily budget
 across all 24 runs (`AUTOPILOT_MAX_DRAFTS_PER_DAY`, 5). Summary pushes
 (digest + worklist) stay twice daily (06:00, 13:00) so the channel isn't
@@ -252,13 +256,15 @@ Slack `sync` and the `notion_sync` MCP tool do the same reconcile.
 ## Scheduling
 
 ```bash
-karani hunt        # launchd: karani hourly at 06:00 + 13:00, logs/daily-*.log
+karani hunt        # installs two launchd agents (macOS)
 karani unschedule
 ```
 
-`daily-full` = ingest → qualify → digest → Slack digest + actions push →
-Notion sync. The push and sync steps are best-effort: unconfigured or
-briefly-down channels never sink the pipeline run.
+`com.karani.hourly` runs the hunt pass every hour; `com.karani.daily`
+pushes digest + worklist summaries at 06:00 and 13:00. Every delivery
+step is best-effort — an unconfigured or briefly-down channel never
+sinks a pipeline run. Logs land in `logs/` (repo mode) or
+`~/.karani/logs/` (installed mode).
 
 ## Memory
 
@@ -293,7 +299,10 @@ or keep Neon — the DSN is the only switch.
 
 ## LLM providers
 
-The qualifier is provider-pluggable. Set once via env; override per-invocation with `--provider` / `--model`.
+Every LLM task (qualify, draft, humanize, tailor, prep, followup) is
+independently routable in `karani.toml` `[llm.*]` — run bulk
+qualification on a local model and keep a strong hosted model for
+drafting. Env vars and `--provider`/`--model` flags override per run.
 
 **OpenRouter (default).** Any OpenRouter model slug works — the current default is `moonshotai/kimi-k2-thinking` because Kimi K2 has strong long-context reasoning and OpenRouter exposes extended thinking via the standard `reasoning.effort` param. To swap models:
 
@@ -304,7 +313,7 @@ QUAL_PROVIDER=openrouter QUAL_MODEL=moonshotai/kimi-k2-thinking \
 karani qualify --provider openrouter --model anthropic/claude-sonnet-4.5
 ```
 
-Uses only `httpx` — no extra SDK needed. Reasoning tokens count toward completion; the default `QUAL_MAX_TOKENS=8000` allows for it.
+Uses only `httpx` — no extra SDK needed. Reasoning tokens count toward completion; the default 16k token cap allows for it.
 
 **Anthropic direct.** Install with `uv sync --extra anthropic`, then:
 
@@ -328,7 +337,10 @@ Recommended split: local for bulk qualification (high volume, forgiving),
 hosted for drafting (low volume, and draft quality is what gets the
 interview).
 
-**Agentic follow-up.** The current qualifier is single-turn — one LLM call per job, structured JSON out. Kimi K2 supports tool-use, so a natural next step is to hand it a set of tools (`fetch_levels_fyi_comp(company)`, `fetch_company_blog(company)`, `check_engineering_hiring_signals(company)`) and let it decide whether to gather more evidence before ruling. The `OpenRouterQualifier.complete` payload builder is where you'd add `tools=[...]` and loop on `finish_reason=="tool_calls"`. Kept out of scope for the first pass — deterministic single-turn is enough to unblock the daily digest.
+**Agent mode** (`karani qualify --agent`) hands the qualifier tools —
+web search, page fetch, GitHub org, Wikipedia — so it gathers evidence
+about a company before ruling. 5–10x the cost per row; use it on top
+candidates, not the daily batch (ADR 0007).
 
 ## What's downstream
 
@@ -346,21 +358,26 @@ Only rows where `prefilter_passed = TRUE`, `active = TRUE`, and (`qualification 
 
 ## Feedback loop
 
-Every reaction you record with `verdict` writes to `user_verdict` + `user_verdict_at`. Next iteration: feed the last 50 verdicts (as `[job → reaction]` pairs) back into the qualification prompt as few-shot examples so the model learns your taste over time without retraining. Table already carries the columns — the wire-up is one prompt change.
+Every reaction — a `verdict` command, a Slack button click — does three
+things at once: updates the state machine, becomes a few-shot
+`[job → reaction]` example in the next qualification prompt, and writes
+a distilled fact to the memory layer (recalled semantically per company
+when mem0 is active). The system's taste converges on yours without any
+retraining — and `karani funnel` measures whether it's working.
 
 ## Adding a source
 
-1. Subclass `Fetcher` in `ingestion/<source>.py`.
-2. Register in `ingestion/__init__.py` `FETCHERS` and add the enum to `Source`.
+1. Subclass `Fetcher` in `karani/ingestion/<source>.py`.
+2. Register in `karani/ingestion/__init__.py` `FETCHERS` and add the enum to `Source`.
 3. If it's a per-company ATS, add company slugs to `TARGETS`. If it's a feed, add the enum to `FEED_SOURCES`.
 4. Every fetcher must use `get_with_retry` (per-host semaphore + backoff).
 5. Every fetched job must call `.finalize()` so `content_hash` and `canonical_hash` are populated.
 
 ## Changing the rules
 
-Edit `ingestion/profile.py` (skills, seniority), `ingestion/config.py`
-(geo/relocation/comp signals, title exclusions), or the prompts — then
-re-judge everything already stored:
+Edit `karani.toml` — roles, skills, shapes, exclusions, positioning —
+then re-judge everything already stored (signal *phrases* stay in
+`karani/ingestion/config.py`; extending them is a PR, per CLAUDE.md 4.2):
 
 ```bash
 karani refilter   # re-runs the pre-filter over all active rows
