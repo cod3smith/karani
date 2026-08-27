@@ -134,8 +134,74 @@ conversationally:
 karani mcp
 ```
 
-The repo ships a project-scoped `.mcp.json`, so Claude Code sessions opened
-in this directory pick the server up automatically.
+### Connecting from your client
+
+The server speaks stdio; every MCP host connects with the same two
+tokens: command `karani`, args `["mcp"]`. It inherits the client's
+environment — secrets come from your shell/.env, and `karani.toml` is
+found in the working directory or `~/.karani/`.
+
+**Claude Code** — the repo ships a project-scoped `.mcp.json`, so
+sessions opened in this directory connect automatically. From anywhere
+else (installed mode):
+
+```bash
+claude mcp add karani -- karani mcp
+```
+
+**Claude Desktop** — add to `claude_desktop_config.json`
+(Settings → Developer → Edit Config):
+
+```json
+{
+  "mcpServers": {
+    "karani": { "command": "karani", "args": ["mcp"] }
+  }
+}
+```
+
+**Cursor** — `.cursor/mcp.json` in your workspace (or the global one):
+
+```json
+{
+  "mcpServers": {
+    "karani": { "command": "karani", "args": ["mcp"] }
+  }
+}
+```
+
+**Any other MCP host** (VS Code + Copilot, Windsurf, Zed, your own
+agent): configure a stdio server with command `karani`, args `["mcp"]`.
+If the host can't resolve `karani` on PATH, use the absolute path from
+`which karani`, or `uv` form: command `uv`, args
+`["run", "karani", "mcp"]` with the repo as working directory.
+
+### Using it
+
+Once connected, you talk to your assistant normally — it picks the
+tools. The conversations that earn their keep:
+
+- *"What should I do on the job hunt today?"* → `next_actions` returns
+  the prioritized worklist (review / draft / submit / follow-up, with
+  fast-lane flags).
+- *"Anything new worth applying to?"* → `shortlist`, then `get_job` for
+  the one you ask about.
+- *"Build the application for job 935."* → `draft` (tailored resume +
+  humanized letter + artifact links), then *"mark it approved"* →
+  `set_status`.
+- *"I applied to the ClickHouse role through a referral."* →
+  `set_status` with `warm_path=true` — feeds the warm-vs-cold funnel.
+- *"They asked me about incident ownership in the screen."* →
+  `record_question` — future prep packs for that company recall it.
+- *"Remember that I won't consider crypto companies."* → `remember`;
+  every later qualification recalls it.
+- *"How is the hunt converting?"* → `funnel_stats`.
+- *"Run a hunt pass now."* → `autopilot` (billed, budget-capped).
+
+An orchestrating agent can run the whole loop headlessly:
+`next_actions` → act → repeat. Billed tools (`qualify`, `draft`,
+`prep`, `draft_followup`, `autopilot`) say so in their descriptions and
+respect the same budget caps as the scheduler.
 
 Tools map 1:1 onto the CLI verbs:
 
