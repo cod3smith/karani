@@ -1,0 +1,85 @@
+# CircleCI mirror of .github/workflows/ci.yml — same commands, same gates.
+# Publishing stays on GitHub Actions (publish.yml): PyPI Trusted
+# Publishing is not available from CircleCI, and we do not store PyPI
+# tokens in third-party CI secrets.
+#
+# One-time setup: circleci.com -> log in with GitHub -> Set Up Project
+# for cod3smith/karani -> use this config. For the coverage badge, add
+# COVERALLS_REPO_TOKEN in Project Settings -> Environment Variables
+# (token from coveralls.io repo page).
+version: 2.1
+
+executors:
+  py:
+    parameters:
+      tag:
+        type: string
+    docker:
+      - image: cimg/python:<< parameters.tag >>
+
+commands:
+  install:
+    steps:
+      - checkout
+      - run:
+          name: Install uv + project (all extras)
+          command: |
+            pip install --quiet uv
+            uv sync --all-extras
+
+jobs:
+  test:
+    parameters:
+      tag:
+        type: string
+    executor:
+      name: py
+      tag: << parameters.tag >>
+    steps:
+      - install
+      - run:
+          name: Lint
+          command: uv run ruff check karani tests
+      - run:
+          name: Tests (with coverage)
+          command: >
+            uv run pytest tests -q
+            --cov=karani --cov-report=lcov:coverage.lcov --cov-report=term
+      - run:
+          name: Coveralls (3.13 only, when token configured)
+          command: |
+            if [ "<< parameters.tag >>" = "3.13" ] && [ -n "$COVERALLS_REPO_TOKEN" ]; then
+              uv run --with coveralls coveralls --service=circleci
+            else
+              echo "skipping coveralls upload"
+            fi
+
+  build:
+    executor:
+      name: py
+      tag: "3.13"
+    steps:
+      - checkout
+      - run:
+          name: Build wheel + sdist
+          command: |
+            pip install --quiet uv
+            uv build
+      - run:
+          name: Smoke-test the wheel
+          command: |
+            uv venv /tmp/smoke
+            uv pip install --python /tmp/smoke/bin/python dist/*.whl
+            /tmp/smoke/bin/karani --version
+            KARANI_HOME=/tmp/kh /tmp/smoke/bin/karani init --yes
+            KARANI_HOME=/tmp/kh KARANI_CONFIG=/tmp/kh/karani.toml \
+              /tmp/smoke/bin/karani config check
+
+workflows:
+  ci:
+    jobs:
+      - test:
+          matrix:
+            parameters:
+              tag: ["3.11", "3.12", "3.13"]
+      - build

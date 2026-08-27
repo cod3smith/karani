@@ -59,7 +59,8 @@ criteria per item. Good first contributions:
 ## PR checklist
 
 - [ ] `make test` green, `uv run ruff check` clean on touched files
-      (CI enforces both on 3.11–3.13 plus a wheel install smoke)
+      (CI enforces both on 3.11–3.13 plus a wheel install smoke —
+      GitHub Actions and CircleCI run the same commands)
 - [ ] Guardrails in `CLAUDE.md` section 4 respected
 - [ ] Prompt changed materially? Version bumped
 - [ ] New capability? Landed on Storage/runner first, all surfaces synced
