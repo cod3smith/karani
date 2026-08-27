@@ -32,12 +32,18 @@ MEM0_USER_ID = os.getenv("MEM0_USER_ID", "kelyn")
 
 
 def _mem0_config() -> dict[str, Any]:
-    """mem0 OSS config: pgvector in karani's own DB, Ollama for LLM+embeds.
+    """mem0 OSS config: pgvector + Ollama, every knob env-overridable.
 
-    Every knob is env-overridable; defaults assume the docker-compose stack
-    (db on :5433, ollama on :11434).
+    The vector store reads MEM0_PG_URL, defaulting to the docker-compose
+    Postgres — NOT DATABASE_URL. The ledger (system of record) can live
+    in Neon while the derived vector index stays local and disposable;
+    pointing them at the same database also works.
     """
-    dsn = urlparse(os.getenv("DATABASE_URL", ""))
+    dsn = urlparse(os.getenv(
+        "MEM0_PG_URL",
+        os.getenv("DATABASE_URL", "postgresql://karani:karani@localhost:5433/karani"),
+    ))
+    ollama_url = os.getenv("MEM0_OLLAMA_URL", "http://localhost:11434")
     return {
         "vector_store": {
             "provider": "pgvector",
@@ -48,19 +54,26 @@ def _mem0_config() -> dict[str, Any]:
                 "password": dsn.password or "karani",
                 "dbname": (dsn.path or "/karani").lstrip("/"),
                 "collection_name": os.getenv("MEM0_COLLECTION", "karani_memories"),
+                # Must match the embedder's output dims (nomic-embed-text
+                # = 768); mem0's default assumes OpenAI's 1536.
+                "embedding_model_dims": int(os.getenv("MEM0_EMBED_DIMS", "768")),
             },
         },
         "llm": {
             "provider": os.getenv("MEM0_LLM_PROVIDER", "ollama"),
             "config": {
-                "model": os.getenv("MEM0_LLM_MODEL",
-                                   os.getenv("LOCAL_LLM_MODEL", "qwen3:32b")),
+                # Memory extraction is a small-model task; no need for the
+                # big qualification model here.
+                "model": os.getenv("MEM0_LLM_MODEL", "llama3.2:3b"),
+                "ollama_base_url": ollama_url,
             },
         },
         "embedder": {
             "provider": os.getenv("MEM0_EMBEDDER_PROVIDER", "ollama"),
             "config": {
                 "model": os.getenv("MEM0_EMBEDDER_MODEL", "nomic-embed-text"),
+                "ollama_base_url": ollama_url,
+                "embedding_dims": int(os.getenv("MEM0_EMBED_DIMS", "768")),
             },
         },
     }
@@ -74,15 +87,32 @@ class _Mem0Backend:
         self._client = Memory.from_config(_mem0_config())
 
     async def add(self, content: str, metadata: dict) -> None:
-        await asyncio.to_thread(
-            self._client.add, content,
-            user_id=MEM0_USER_ID, metadata=metadata,
-        )
+        # infer=False: the ledger already holds deliberate, distilled
+        # facts (ADR 0009) — store them verbatim instead of letting
+        # mem0's extraction LLM rephrase (or drop) them.
+        def _add():
+            try:
+                self._client.add(content, user_id=MEM0_USER_ID,
+                                 metadata=metadata, infer=False)
+            except TypeError:  # older mem0 without infer kwarg
+                self._client.add(content, user_id=MEM0_USER_ID,
+                                 metadata=metadata)
+        await asyncio.to_thread(_add)
 
     async def search(self, query: str, limit: int) -> list[dict]:
-        result = await asyncio.to_thread(
-            self._client.search, query, user_id=MEM0_USER_ID, limit=limit,
-        )
+        def _search():
+            try:
+                # mem0 >= 1.0 API: filters + top_k
+                return self._client.search(
+                    query, top_k=limit,
+                    filters={"user_id": MEM0_USER_ID},
+                )
+            except (TypeError, ValueError):
+                # legacy API: top-level user_id + limit
+                return self._client.search(
+                    query, user_id=MEM0_USER_ID, limit=limit,
+                )
+        result = await asyncio.to_thread(_search)
         hits = result.get("results", result) if isinstance(result, dict) else result
         return [
             {"content": h.get("memory", ""), "kind": "mem0",
@@ -169,6 +199,30 @@ class MemoryManager:
             content, "question", source="stage",
             job_id=job_row.get("id"), company=company,
         )
+
+    async def reindex(self) -> dict:
+        """Rebuild the derived mem0 index from the ledger.
+
+        The recipe docs/memory.md promises: the ledger is truth, the
+        vector index is disposable — this is the restore.
+        """
+        if self._mem0 is None:
+            return {"indexed": 0, "failed": 0, "mode": self.mode,
+                    "note": "mem0 not active (KARANI_MEMORY, extra, infra)"}
+        rows = await self.storage.all_memories()
+        indexed = failed = 0
+        for m in rows:
+            try:
+                await self._mem0.add(m["content"], {
+                    "kind": m.get("kind"), "source": m.get("source"),
+                    "job_id": m.get("job_id"), "company": m.get("company"),
+                })
+                indexed += 1
+            except Exception as exc:
+                failed += 1
+                log.warning("reindex failed for memory %s: %s",
+                            m.get("id"), exc)
+        return {"indexed": indexed, "failed": failed, "mode": self.mode}
 
     # --- read paths ---
 

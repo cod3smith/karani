@@ -510,6 +510,22 @@ async def _remember(content: str, kind: str, company: str | None) -> int:
     return 0
 
 
+async def _reindex() -> int:
+    _configure_logging()
+    from memory import MemoryManager
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        manager = MemoryManager(storage)
+        result = await manager.reindex()
+        print(f"mode={result['mode']} indexed={result['indexed']} "
+              f"failed={result.get('failed', 0)}"
+              + (f"  note: {result['note']}" if result.get("note") else ""))
+        return 0
+    finally:
+        await storage.close()
+
+
 async def _recall(query: str, kind: str | None, company: str | None,
                   limit: int) -> int:
     _configure_logging()
@@ -752,6 +768,8 @@ def main() -> None:
                     choices=sorted(Storage.MEMORY_KINDS))
     rm.add_argument("--company", type=str, default=None)
 
+    sub.add_parser("reindex", help="rebuild the mem0 index from the memory ledger")
+
     rc = sub.add_parser("recall", help="query the memory layer")
     rc.add_argument("query", type=str)
     rc.add_argument("--kind", default=None,
@@ -816,6 +834,8 @@ def main() -> None:
     elif args.cmd == "recall":
         sys.exit(asyncio.run(_recall(args.query, args.kind, args.company,
                                      args.limit)))
+    elif args.cmd == "reindex":
+        sys.exit(asyncio.run(_reindex()))
     elif args.cmd == "sweep":
         sys.exit(asyncio.run(_sweep(args.days)))
 

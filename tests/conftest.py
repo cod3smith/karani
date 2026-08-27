@@ -26,6 +26,11 @@ for _var in (
 ):
     os.environ.pop(_var, None)
 os.environ["KARANI_MEMORY"] = "basic"
+# mem0 defaults point at localhost infra that may genuinely be running on
+# a dev machine — force unreachable endpoints so mem0-mode tests exercise
+# the degradation path instead of touching a real vector store.
+os.environ["MEM0_PG_URL"] = "postgresql://x:x@127.0.0.1:1/x"
+os.environ["MEM0_OLLAMA_URL"] = "http://127.0.0.1:1"
 
 
 import pytest

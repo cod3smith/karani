@@ -1203,6 +1203,17 @@ class Storage:
             )
             return result.endswith("1")
 
+    async def all_memories(self) -> list[dict]:
+        """Every active ledger row — the reindex source (docs/memory.md)."""
+        if self.pool is None:
+            return [dict(m) for m in self._memories if m["active"]]
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch(
+                "SELECT id, kind, content, source, job_id, company "
+                "FROM memories WHERE active ORDER BY id"
+            )
+            return [dict(r) for r in records]
+
     async def recall_memories(
         self, query: str, *, kind: str | None = None,
         company: str | None = None, limit: int = 5,
