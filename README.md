@@ -1,6 +1,7 @@
 # karani
 
-[![ci](https://github.com/cod3smith/karani/actions/workflows/ci.yml/badge.svg)](https://github.com/cod3smith/karani/actions/workflows/ci.yml)
+<!-- re-add once GitHub Actions billing is unlocked:
+[![ci](https://github.com/cod3smith/karani/actions/workflows/ci.yml/badge.svg)](https://github.com/cod3smith/karani/actions/workflows/ci.yml) -->
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/cod3smith/karani/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/cod3smith/karani/tree/main)
 [![Coverage Status](https://coveralls.io/repos/github/cod3smith/karani/badge.svg?branch=main)](https://coveralls.io/github/cod3smith/karani?branch=main)
 [![PyPI](https://img.shields.io/pypi/v/karani)](https://pypi.org/project/karani/)
