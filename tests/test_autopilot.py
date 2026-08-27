@@ -6,15 +6,15 @@ import json
 
 import pytest
 
-from autopilot import run_autopilot
-from ingestion.filters import pre_filter
-from ingestion.models import Job, RemoteStatus, Source
-from ingestion.profile import DEFAULT_PROFILE
-from ingestion.resume import ResumeProfile
-from ingestion.storage import Storage
-from memory import MemoryManager
-from slackbridge.blocks import pack_blocks
-from slackbridge.interactions import handle_interaction
+from karani.autopilot import run_autopilot
+from karani.ingestion.filters import pre_filter
+from karani.ingestion.models import Job, RemoteStatus, Source
+from karani.ingestion.profile import DEFAULT_PROFILE
+from karani.ingestion.resume import ResumeProfile
+from karani.ingestion.storage import Storage
+from karani.memory import MemoryManager
+from karani.slackbridge.blocks import pack_blocks
+from karani.slackbridge.interactions import handle_interaction
 
 DRAFT_JSON = json.dumps({
     "cover_letter": "Dear team, here is my Python and Kafka work.",
@@ -214,7 +214,7 @@ async def test_run_autopilot_disabled_by_zero_cap(storage):
 # --- review card ---
 
 def test_pack_blocks_have_all_buttons():
-    from drafting.models import DraftPackage
+    from karani.drafting.models import DraftPackage
     pkg = DraftPackage(cover_letter="Letter body.", keyword_coverage=0.8)
     blocks = pack_blocks({"id": 7, "company_display": "GitLab",
                           "title": "SBE", "fit_score": 90,

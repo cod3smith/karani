@@ -7,12 +7,12 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from qualification.client import QualifierClient, _extract_json
-from qualification.models import QualificationResult
+from karani.qualification.client import QualifierClient, _extract_json
+from karani.qualification.models import QualificationResult
 
 from .keywords import coverage, extract_keywords
 from .models import DraftPackage
-from .prompts import DRAFT_PROMPT_VERSION, SYSTEM_PROMPT, build_user_prompt
+from .prompts import DRAFT_PROMPT_VERSION, build_user_prompt, system_prompt
 from .writers import write_markdown
 
 log = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ async def draft_for_job(
     user = build_user_prompt(resume=resume, qualification=qual_text,
                              job_row=job_row,
                              keyword_targets=resume_gap["missing"])
-    raw = await client.complete(SYSTEM_PROMPT, user)
+    raw = await client.complete(system_prompt(), user)
 
     try:
         data = _extract_json(raw)

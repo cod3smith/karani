@@ -5,12 +5,12 @@ import json
 
 import pytest
 
-from artifacts import ArtifactStore
-from drafting.pipeline import build_application_pack
-from ingestion.filters import pre_filter
-from ingestion.models import Job, RemoteStatus, Source
-from ingestion.profile import DEFAULT_PROFILE
-from ingestion.storage import Storage
+from karani.artifacts import ArtifactStore
+from karani.drafting.pipeline import build_application_pack
+from karani.ingestion.filters import pre_filter
+from karani.ingestion.models import Job, RemoteStatus, Source
+from karani.ingestion.profile import DEFAULT_PROFILE
+from karani.ingestion.storage import Storage
 
 
 # --- artifact store ---
@@ -123,8 +123,8 @@ async def test_pipeline_full_flow(tmp_path, monkeypatch):
     async def fake_create():
         return stub
 
-    import drafting.pipeline as pipeline_mod
-    import artifacts
+    import karani.drafting.pipeline as pipeline_mod
+    import karani.artifacts as artifacts
     monkeypatch.setattr(artifacts.ArtifactStore, "create",
                         staticmethod(fake_create))
 

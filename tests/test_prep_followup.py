@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from drafting.followup import FOLLOWUP_PROMPT_VERSION, followup_for_job
-from drafting.prep import PREP_PROMPT_VERSION, prep_for_job
+from karani.drafting.followup import FOLLOWUP_PROMPT_VERSION, followup_for_job
+from karani.drafting.prep import PREP_PROMPT_VERSION, prep_for_job
 
 PREP_JSON = json.dumps({
     "company_brief": "GitLab is a devops platform, fully remote.",

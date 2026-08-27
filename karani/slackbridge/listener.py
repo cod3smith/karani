@@ -17,9 +17,9 @@ import asyncio
 import logging
 import os
 
-from ingestion.config import settings
-from ingestion.storage import Storage
-from memory import MemoryManager
+from karani.ingestion.config import settings
+from karani.ingestion.storage import Storage
+from karani.memory import MemoryManager
 
 from .client import SlackClient
 from .commands import handle_command
@@ -28,9 +28,12 @@ from .interactions import handle_interaction
 log = logging.getLogger(__name__)
 
 
-def _is_command_message(event: dict, *, channel_filter: str | None) -> bool:
+def _is_command_message(event: dict, *, channel_filter: str | None,
+                        allowed_users: tuple[str, ...] = ()) -> bool:
     """Only plain user messages count — never bots (loop protection),
-    never edits/joins (subtypes), and only the configured conversation."""
+    never edits/joins (subtypes), only the configured conversation, and
+    only allowlisted users when an allowlist is set (billed commands
+    must not be open to every channel member)."""
     if event.get("type") != "message":
         return False
     if event.get("bot_id") or event.get("subtype"):
@@ -38,6 +41,8 @@ def _is_command_message(event: dict, *, channel_filter: str | None) -> bool:
     if not (event.get("text") or "").strip():
         return False
     if channel_filter and event.get("channel") != channel_filter:
+        return False
+    if allowed_users and event.get("user") not in allowed_users:
         return False
     return True
 
@@ -48,9 +53,11 @@ async def handle_event(
     memory: MemoryManager,
     slack: SlackClient,
     channel_filter: str | None = None,
+    allowed_users: tuple[str, ...] = (),
 ) -> str | None:
     """Process one Events API `message` event; returns the reply text."""
-    if not _is_command_message(event, channel_filter=channel_filter):
+    if not _is_command_message(event, channel_filter=channel_filter,
+                               allowed_users=allowed_users):
         return None
     reply = await handle_command(event["text"], storage=storage,
                                  memory=memory)
@@ -95,7 +102,11 @@ async def run_listener() -> None:
     await storage.connect()
     memory = MemoryManager(storage)
     slack = SlackClient()
-    channel_filter = os.getenv("SLACK_CHANNEL") or None
+    from karani.config import get_config
+    from karani.config.loader import resolve
+    scfg = get_config().slack
+    channel_filter = resolve("SLACK_CHANNEL", scfg.channel, None)
+    allowed_users = scfg.allowed_users
 
     sm_client = SocketModeClient(
         app_token=app_token,
@@ -114,7 +125,8 @@ async def run_listener() -> None:
                 event = (req.payload or {}).get("event") or {}
                 await handle_event(event, storage=storage, memory=memory,
                                    slack=slack,
-                                   channel_filter=channel_filter)
+                                   channel_filter=channel_filter,
+                                   allowed_users=allowed_users)
             elif req.type == "interactive":
                 # Pack review buttons (ADR 0012). Reply in the pack's
                 # thread so the card and its resolution stay together.

@@ -9,13 +9,13 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-import notionsync.client as client_mod
-from ingestion.filters import pre_filter
-from ingestion.models import Job, RemoteStatus, Source
-from ingestion.profile import DEFAULT_PROFILE
-from ingestion.storage import Storage
-from notionsync import NotionClient, NotionError, maybe_sync_job, sync_jobs
-from notionsync.sync import (DATABASE_PROPERTIES, _page_properties,
+import karani.notionsync.client as client_mod
+from karani.ingestion.filters import pre_filter
+from karani.ingestion.models import Job, RemoteStatus, Source
+from karani.ingestion.profile import DEFAULT_PROFILE
+from karani.ingestion.storage import Storage
+from karani.notionsync import NotionClient, NotionError, maybe_sync_job, sync_jobs
+from karani.notionsync.sync import (DATABASE_PROPERTIES, _page_properties,
                              init_database)
 
 NOW = datetime(2026, 8, 27, 12, 0, 0, tzinfo=timezone.utc)
@@ -29,7 +29,7 @@ FULL_SCHEMA = {
 
 @pytest.fixture
 def notion_http(monkeypatch):
-    import notionsync.sync as sync_mod
+    import karani.notionsync.sync as sync_mod
     monkeypatch.setattr(sync_mod, "_schema_cache", {})
     state = {"requests": [], "responses": [], "page_counter": 0,
              "db_properties": dict(FULL_SCHEMA)}

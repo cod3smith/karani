@@ -5,10 +5,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from ingestion.filters import pre_filter
-from ingestion.models import Job, RemoteStatus, Source
-from ingestion.profile import DEFAULT_PROFILE
-from ingestion.storage import Storage
+from karani.ingestion.filters import pre_filter
+from karani.ingestion.models import Job, RemoteStatus, Source
+from karani.ingestion.profile import DEFAULT_PROFILE
+from karani.ingestion.storage import Storage
 
 NOW = datetime(2026, 8, 27, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -191,7 +191,7 @@ async def test_set_status_warm_flag_roundtrip():
 @pytest.mark.asyncio
 async def test_update_prefilter_roundtrip():
     """`refilter` support: re-judged rows persist the new verdict."""
-    from ingestion.filters import pre_filter as pf_run
+    from karani.ingestion.filters import pre_filter as pf_run
     storage = Storage("")
     await storage.connect()
     job_id = await _seed(storage, "1")

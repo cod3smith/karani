@@ -1,19 +1,24 @@
-"""CLI entry: `python -m ingestion.cli {run,qualify,digest,draft,prep,
-followup,intel,notify,notion,verdict,status,stage,asked,outcome,discover,stats,actions,
-funnel,remember,recall,refilter,sweep}`"""
+"""The `karani` CLI — every verb of the pipeline behind one command.
+
+Pipeline: run, qualify, digest, draft, prep, followup, autopilot, refilter
+Review:   actions, funnel, stats, verdict, status, stage, asked, outcome
+Context:  remember, recall, reindex, intel, notion, notify
+Setup:    init, config, hunt, unschedule, infra, mcp, slack, hourly
+"""
 from __future__ import annotations
 
 import argparse
 import asyncio
 import logging
+import os
 import sys
 
-from .config import settings
-from .digest import render as render_digest
-from .discovery import probe_unpromoted
-from .orchestrator import run
-from .resume import DEFAULT_RESUME_PATH, ResumeProfile
-from .storage import Storage
+from karani.ingestion.config import settings
+from karani.ingestion.digest import render as render_digest
+from karani.ingestion.discovery import probe_unpromoted
+from karani.ingestion.orchestrator import run
+from karani.ingestion.resume import DEFAULT_RESUME_PATH, ResumeProfile
+from karani.ingestion.storage import Storage
 
 
 def _configure_logging() -> None:
@@ -61,7 +66,7 @@ async def _qualify(limit: int, concurrency: int, provider: str | None,
                    model: str | None, resume_path: str,
                    agent_mode: bool) -> int:
     _configure_logging()
-    from qualification import get_qualifier, qualify_pending
+    from karani.qualification import get_qualifier, qualify_pending
 
     resume = ResumeProfile.from_file(resume_path)
     print(f"resume loaded: {resume.word_count} words, hash={resume.hash[:12]}")
@@ -79,7 +84,7 @@ async def _qualify(limit: int, concurrency: int, provider: str | None,
     storage = Storage(settings.database_url)
     await storage.connect()
     try:
-        from memory import MemoryManager
+        from karani.memory import MemoryManager
         stats = await qualify_pending(
             storage, client, resume,
             limit=limit, concurrency=concurrency,
@@ -123,8 +128,8 @@ async def _digest(limit: int, fmt: str, output: str | None) -> int:
 async def _draft(job_id: int, provider: str | None, model: str | None,
                  resume_path: str, output_path: str | None) -> int:
     _configure_logging()
-    from drafting import build_application_pack
-    from qualification import get_qualifier
+    from karani.drafting import build_application_pack
+    from karani.qualification import get_qualifier
 
     resume = ResumeProfile.from_file(resume_path)
     client = get_qualifier(provider=provider, model=model)
@@ -178,9 +183,9 @@ async def _verdict(job_id: int, verdict: str) -> int:
         print(f"job_id={job_id} user_verdict={verdict}")
         row = await storage.get_job(job_id)
         if row:
-            from memory import MemoryManager
+            from karani.memory import MemoryManager
             await MemoryManager(storage).remember_verdict(row, verdict)
-        from notionsync import maybe_sync_job
+        from karani.notionsync import maybe_sync_job
         await maybe_sync_job(storage, job_id)
     finally:
         await storage.close()
@@ -197,7 +202,7 @@ async def _status(job_id: int, status: str,
                                              warm_path=warm_path)
         warm = "" if warm_path is None else f" warm_path={warm_path}"
         print(f"job_id={job_id} application_status={status}{warm}")
-        from notionsync import maybe_sync_job
+        from karani.notionsync import maybe_sync_job
         await maybe_sync_job(storage, job_id)
     finally:
         await storage.close()
@@ -221,7 +226,7 @@ async def _stage(job_id: int, stage: str, notes: str) -> int:
 
 async def _asked(job_id: int, question: str, stage: str) -> int:
     _configure_logging()
-    from memory import MemoryManager
+    from karani.memory import MemoryManager
     storage = Storage(settings.database_url)
     await storage.connect()
     try:
@@ -249,9 +254,9 @@ async def _outcome(job_id: int, outcome: str) -> int:
         print(f"job_id={job_id} outcome={outcome}")
         row = await storage.get_job(job_id)
         if row:
-            from memory import MemoryManager
+            from karani.memory import MemoryManager
             await MemoryManager(storage).remember_outcome(row, outcome)
-        from notionsync import maybe_sync_job
+        from karani.notionsync import maybe_sync_job
         await maybe_sync_job(storage, job_id)
     finally:
         await storage.close()
@@ -313,10 +318,10 @@ async def _funnel() -> int:
 async def _prep(job_id: int, provider: str | None, model: str | None,
                 resume_path: str) -> int:
     _configure_logging()
-    from drafting import prep_for_job
-    from intel import dossier_text, get_company_intel
-    from memory import MemoryManager
-    from qualification import get_qualifier
+    from karani.drafting import prep_for_job
+    from karani.intel import dossier_text, get_company_intel
+    from karani.memory import MemoryManager
+    from karani.qualification import get_qualifier
 
     storage = Storage(settings.database_url)
     await storage.connect()
@@ -349,11 +354,11 @@ async def _followup(job_id: int, provider: str | None, model: str | None) -> int
     _configure_logging()
     from datetime import datetime, timezone
 
-    from drafting import followup_for_job
-    from intel import dossier_text, get_company_intel
-    from qualification import get_qualifier
+    from karani.drafting import followup_for_job
+    from karani.intel import dossier_text, get_company_intel
+    from karani.qualification import get_qualifier
 
-    from .storage import _days_ago
+    from karani.ingestion.storage import _days_ago
 
     storage = Storage(settings.database_url)
     await storage.connect()
@@ -380,7 +385,7 @@ async def _followup(job_id: int, provider: str | None, model: str | None) -> int
 
 async def _intel(company: str, refresh: bool) -> int:
     _configure_logging()
-    from intel import dossier_text, get_company_intel
+    from karani.intel import dossier_text, get_company_intel
 
     storage = Storage(settings.database_url)
     await storage.connect()
@@ -398,8 +403,8 @@ async def _notify(kind: str, limit: int) -> int:
     _configure_logging()
     import os
 
-    from slackbridge import SlackClient
-    from slackbridge.blocks import actions_blocks, digest_blocks
+    from karani.slackbridge import SlackClient
+    from karani.slackbridge.blocks import actions_blocks, digest_blocks
 
     channel = os.getenv("SLACK_CHANNEL", "")
     if not channel:
@@ -430,10 +435,9 @@ async def _autopilot(min_fit: int | None, max_drafts: int | None) -> int:
     _configure_logging()
     import os
 
-    from autopilot import run_autopilot
-    from autopilot.runner import DEFAULT_MAX_DRAFTS, DEFAULT_MIN_FIT
-    from qualification import get_qualifier
-    from slackbridge import SlackClient
+    from karani.autopilot import run_autopilot
+    from karani.qualification import get_qualifier
+    from karani.slackbridge import SlackClient
 
     channel = os.getenv("SLACK_CHANNEL", "")
     if not channel:
@@ -447,9 +451,8 @@ async def _autopilot(min_fit: int | None, max_drafts: int | None) -> int:
             storage, slack=SlackClient(), channel=channel,
             make_qualifier=lambda: get_qualifier(),
             load_resume=lambda: ResumeProfile.from_file(DEFAULT_RESUME_PATH),
-            min_fit=min_fit if min_fit is not None else DEFAULT_MIN_FIT,
-            max_drafts=(max_drafts if max_drafts is not None
-                        else DEFAULT_MAX_DRAFTS),
+            min_fit=min_fit,
+            max_drafts=max_drafts,
         )
         print(f"candidates={stats.candidates} drafted={stats.drafted} "
               f"delivered={stats.delivered} errors={len(stats.errors)}")
@@ -466,7 +469,7 @@ async def _notion(action: str, parent_page_id: str | None) -> int:
     _configure_logging()
     import os
 
-    from notionsync import NotionClient, NotionError, init_database, sync_jobs
+    from karani.notionsync import NotionClient, NotionError, init_database, sync_jobs
 
     try:
         client = NotionClient()
@@ -505,7 +508,7 @@ async def _notion(action: str, parent_page_id: str | None) -> int:
 
 async def _remember(content: str, kind: str, company: str | None) -> int:
     _configure_logging()
-    from memory import MemoryManager
+    from karani.memory import MemoryManager
     storage = Storage(settings.database_url)
     await storage.connect()
     try:
@@ -521,7 +524,7 @@ async def _remember(content: str, kind: str, company: str | None) -> int:
 
 async def _reindex() -> int:
     _configure_logging()
-    from memory import MemoryManager
+    from karani.memory import MemoryManager
     storage = Storage(settings.database_url)
     await storage.connect()
     try:
@@ -538,7 +541,7 @@ async def _reindex() -> int:
 async def _recall(query: str, kind: str | None, company: str | None,
                   limit: int) -> int:
     _configure_logging()
-    from memory import MemoryManager
+    from karani.memory import MemoryManager
     storage = Storage(settings.database_url)
     await storage.connect()
     try:
@@ -562,8 +565,8 @@ async def _refilter() -> int:
     """Re-run the pre-filter over all active rows after a rules change
     (profile skills, geo/relocation signals, title exclusions)."""
     _configure_logging()
-    from .filters import pre_filter
-    from .models import Job, RemoteStatus, Source
+    from karani.ingestion.filters import pre_filter
+    from karani.ingestion.models import Job, RemoteStatus, Source
 
     storage = Storage(settings.database_url)
     await storage.connect()
@@ -666,10 +669,164 @@ async def _sweep(days: int) -> int:
     return 0
 
 
+
+
+# -----------------------  setup / serve / schedule  -----------------------
+
+def _karani_bin() -> str:
+    import shutil
+    return shutil.which("karani") or f"{sys.executable} -m karani"
+
+
+def _workdir_and_logs() -> tuple[str, str]:
+    """Repo mode (CWD has karani data) vs installed mode (~/.karani)."""
+    from pathlib import Path
+
+    from karani.config.loader import karani_home
+    if Path("data/resume.md").exists() or Path("karani.toml").exists():
+        logs = Path("logs")
+    else:
+        logs = karani_home() / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    return str(Path.cwd()), str(logs)
+
+
+def _resource(name: str) -> str:
+    from importlib import resources
+    return (resources.files("karani") / "resources" / name).read_text()
+
+
+def _init(yes: bool) -> int:
+    from pathlib import Path
+
+    from karani.config.loader import karani_home
+    from karani.config.wizard import run_wizard
+    dest = (Path("karani.toml")
+            if Path("pyproject.toml").exists() or Path(".git").exists()
+            else karani_home() / "karani.toml")
+    if dest.exists() and not yes:
+        answer = input(f"{dest} exists — overwrite? [y/N]: ")
+        if not answer.lower().startswith("y"):
+            print("aborted")
+            return 1
+    run_wizard(dest, yes=yes)
+    return 0
+
+
+def _config_check() -> int:
+    import json as _json
+
+    from karani.config import config_sources, get_config
+    cfg = get_config()
+    print(f"config file: {config_sources()['file'] or '(defaults)'}")
+    print(_json.dumps(cfg.model_dump(), indent=2, default=str))
+    problems: list[str] = []
+    llm = cfg.llm.for_task("qualify")
+    provider = os.getenv("QUAL_PROVIDER") or llm.provider or "openrouter"
+    key_for = {"openrouter": "OPENROUTER_API_KEY",
+               "anthropic": "ANTHROPIC_API_KEY"}
+    need = key_for.get(provider)
+    if need and not os.getenv(need):
+        problems.append(f"provider '{provider}' needs {need} in env")
+    if not os.getenv("DATABASE_URL"):
+        problems.append("DATABASE_URL unset — using in-memory storage "
+                        "(state is lost between runs)")
+    for prob in problems:
+        print(f"WARNING: {prob}", file=sys.stderr)
+    return 0
+
+
+def _schedule() -> int:
+    import subprocess
+    from pathlib import Path
+
+    workdir, logs = _workdir_and_logs()
+    agents = Path.home() / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True, exist_ok=True)
+    for name in ("karani.hourly", "karani.daily"):
+        content = (_resource(f"{name}.plist.template")
+                   .replace("__KARANI__", _karani_bin())
+                   .replace("__WORKDIR__", workdir)
+                   .replace("__LOGS__", logs))
+        plist = agents / f"com.{name}.plist"
+        plist.write_text(content)
+        subprocess.run(["launchctl", "unload", str(plist)],
+                       capture_output=True)
+        subprocess.run(["launchctl", "load", "-w", str(plist)], check=True)
+    print("scheduled: com.karani.hourly (every hour) + com.karani.daily "
+          "(06:00/13:00)")
+    print(f"logs: {logs}")
+    print("run one now: launchctl start com.karani.hourly")
+    return 0
+
+
+def _unschedule() -> int:
+    import subprocess
+    from pathlib import Path
+
+    agents = Path.home() / "Library" / "LaunchAgents"
+    for name in ("com.karani.hourly.plist", "com.karani.daily.plist"):
+        plist = agents / name
+        subprocess.run(["launchctl", "unload", "-w", str(plist)],
+                       capture_output=True)
+        plist.unlink(missing_ok=True)
+    print("unscheduled")
+    return 0
+
+
+def _infra(action: str, profile: str | None) -> int:
+    import subprocess
+    from pathlib import Path
+
+    from karani.config.loader import karani_home
+    compose = Path("docker-compose.yml")
+    if not compose.exists():
+        compose = karani_home() / "docker-compose.yml"
+        compose.parent.mkdir(parents=True, exist_ok=True)
+        if not compose.exists():
+            compose.write_text(_resource("docker-compose.yml"))
+    cmd = ["docker", "compose", "-f", str(compose)]
+    if profile:
+        cmd += ["--profile", profile]
+    cmd += (["up", "-d"] if action == "up" else ["down"])
+    return subprocess.run(cmd).returncode
+
+
+def _hourly(loop: int | None) -> int:
+    from karani.orchestration.graph import run_hunt_once
+
+    async def _loop() -> None:
+        while True:
+            state = await run_hunt_once()
+            print(f"hunt pass done: errors={len(state.get('errors', []))}")
+            await asyncio.sleep(loop)
+
+    if loop:
+        asyncio.run(_loop())
+        return 0
+    state = asyncio.run(run_hunt_once())
+    errors = state.get("errors", [])
+    for section in ("ingest", "qualify", "autopilot", "notion"):
+        print(f"{section}={state.get(section)}")
+    for e in errors:
+        print(f"ERR: {e}", file=sys.stderr)
+    return 1 if errors else 0
+
+
 # -----------------------  argparse  -----------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser("ingestion")
+    from karani import __version__
+    from karani.config import load_config
+    load_config()
+
+    parser = argparse.ArgumentParser(
+        "karani",
+        description="a self-hosted job-hunt pipeline that drafts "
+                    "everything and submits nothing",
+    )
+    parser.add_argument("--version", action="version",
+                        version=f"karani {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("run", help="fetch → pre-filter → store → sweep → discover")
@@ -786,6 +943,26 @@ def main() -> None:
     rc.add_argument("--company", type=str, default=None)
     rc.add_argument("--limit", type=int, default=5)
 
+    ini = sub.add_parser("init", help="interactive setup — writes karani.toml")
+    ini.add_argument("--yes", action="store_true", help="accept all defaults")
+
+    cfg_p = sub.add_parser("config", help="show the resolved configuration")
+    cfg_p.add_argument("action", nargs="?", choices=["check"], default="check")
+
+    sub.add_parser("hunt", help="schedule the continuous hunt (hourly + daily summaries)")
+    sub.add_parser("unschedule", help="remove the scheduled hunt")
+
+    inf = sub.add_parser("infra", help="manage karani's docker infra")
+    inf.add_argument("action", choices=["up", "down"])
+    inf.add_argument("--profile", default=None,
+                     help="compose profile, e.g. local-llm")
+
+    hr = sub.add_parser("hourly", help="run one hunt pass (or --loop N seconds)")
+    hr.add_argument("--loop", type=int, nargs="?", const=3600, default=None)
+
+    sub.add_parser("mcp", help="serve the MCP server over stdio")
+    sub.add_parser("slack", help="run the two-way Slack listener")
+
     sweep = sub.add_parser("sweep", help="mark stale jobs inactive")
     sweep.add_argument("--days", type=int, default=settings.stale_job_days)
 
@@ -847,6 +1024,24 @@ def main() -> None:
         sys.exit(asyncio.run(_reindex()))
     elif args.cmd == "sweep":
         sys.exit(asyncio.run(_sweep(args.days)))
+    elif args.cmd == "init":
+        sys.exit(_init(args.yes))
+    elif args.cmd == "config":
+        sys.exit(_config_check())
+    elif args.cmd == "hunt":
+        sys.exit(_schedule())
+    elif args.cmd == "unschedule":
+        sys.exit(_unschedule())
+    elif args.cmd == "infra":
+        sys.exit(_infra(args.action, args.profile))
+    elif args.cmd == "hourly":
+        sys.exit(_hourly(args.loop))
+    elif args.cmd == "mcp":
+        from karani.mcp_server.__main__ import main as mcp_main
+        mcp_main()
+    elif args.cmd == "slack":
+        from karani.slackbridge.__main__ import main as slack_main
+        slack_main()
 
 
 if __name__ == "__main__":

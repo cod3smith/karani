@@ -10,9 +10,9 @@ import pytest
 
 pytest.importorskip("langgraph")
 
-from ingestion.resume import ResumeProfile  # noqa: E402
-from ingestion.storage import Storage  # noqa: E402
-from orchestration.graph import HuntDeps, build_hunt_graph  # noqa: E402
+from karani.ingestion.resume import ResumeProfile  # noqa: E402
+from karani.ingestion.storage import Storage  # noqa: E402
+from karani.orchestration.graph import HuntDeps, build_hunt_graph  # noqa: E402
 
 
 class StubSlack:
@@ -61,10 +61,10 @@ def _fake_pipeline(monkeypatch):
     async def fake_autopilot(storage, **kw):
         return FakeAutopilotStats()
 
-    import ingestion.orchestrator
-    import qualification
-    import autopilot as autopilot_pkg
-    monkeypatch.setattr(ingestion.orchestrator, "run", fake_ingest)
+    import karani.ingestion.orchestrator as ingestion_orchestrator
+    import karani.qualification as qualification
+    import karani.autopilot as autopilot_pkg
+    monkeypatch.setattr(ingestion_orchestrator, "run", fake_ingest)
     monkeypatch.setattr(qualification, "qualify_pending", fake_qualify)
     monkeypatch.setattr(autopilot_pkg, "run_autopilot", fake_autopilot)
 
@@ -89,7 +89,7 @@ async def test_node_failure_is_contained_and_alerted(monkeypatch):
     async def broken_qualify(storage, client, resume, **kw):
         raise RuntimeError("provider down")
 
-    import qualification
+    import karani.qualification as qualification
     monkeypatch.setattr(qualification, "qualify_pending", broken_qualify)
 
     storage = Storage("")
@@ -120,7 +120,7 @@ async def test_node_retries_once_then_succeeds(monkeypatch):
             raise RuntimeError("transient")
         return Stats()
 
-    import qualification
+    import karani.qualification as qualification
     monkeypatch.setattr(qualification, "qualify_pending", flaky_qualify)
 
     storage = Storage("")

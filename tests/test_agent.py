@@ -5,14 +5,16 @@ import json
 
 import pytest
 
-from qualification.agent import qualify_one_agent
-from qualification.tools import Tool, ToolRegistry
+from karani.qualification.agent import qualify_one_agent
+from karani.qualification.tools import Tool, ToolRegistry
 
 
 class ScriptedAgentClient:
     """Emits the given sequence of chat_turn responses."""
     model_name = "test"
-    def __init__(self, turns): self.turns = list(turns); self.i = 0
+    def __init__(self, turns):
+        self.turns = list(turns)
+        self.i = 0
     async def chat_turn(self, messages, tools=None):
         resp = self.turns[self.i]
         self.i += 1

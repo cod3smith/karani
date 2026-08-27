@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from drafting import draft_for_job
-from drafting.models import DraftPackage
-from drafting.writers import render_markdown, default_path
-from qualification.models import QualificationResult
+from karani.drafting import draft_for_job
+from karani.drafting.models import DraftPackage
+from karani.drafting.writers import default_path
+from karani.qualification.models import QualificationResult
 
 
 class DraftFakeClient:

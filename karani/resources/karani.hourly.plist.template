@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.karani.hourly</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd __WORKDIR__ &amp;&amp; __KARANI__ hourly >> __LOGS__/hourly-$(date +%Y%m%d).log 2>&amp;1</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__WORKDIR__</string>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+</dict>
+</plist>

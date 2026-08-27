@@ -5,14 +5,16 @@ import json
 
 import pytest
 
-from qualification.client import _extract_json, qualify_one
-from qualification.models import QualificationResult
-from qualification.prompts import build_user_prompt
+from karani.qualification.client import _extract_json, qualify_one
+from karani.qualification.prompts import build_user_prompt
 
 
 class FakeClient:
     model_name = "fake"
-    def __init__(self, script): self.script = script; self.n = 0; self.last_prompt = ""
+    def __init__(self, script):
+        self.script = script
+        self.n = 0
+        self.last_prompt = ""
     async def complete(self, system, user):
         self.last_prompt = user
         self.n += 1

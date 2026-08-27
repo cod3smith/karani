@@ -54,7 +54,7 @@ Treat as leaked.
 **Steps:**
 1. Log into Neon → rotate password on the `neondb` role.
 2. Update `.env` locally.
-3. Confirm `python -m ingestion.cli stats` still runs.
+3. Confirm `karani stats` still runs.
 
 **Acceptance:** old password no longer works; new one does.
 
@@ -62,14 +62,14 @@ Treat as leaked.
 
 ### 1.2 Schedule daily runs — SHIPPED (2026-08)
 
-Shipped: `make hunt` (alias `make schedule`) installs two launchd
+Shipped: `karani hunt` (alias `karani hunt`) installs two launchd
 agents: com.karani.hourly (every hour: ingest -> qualify -> autopilot
 packs -> Notion sync; quiet when nothing is new) and com.karani.daily
 (06:00 + 13:00 digest + worklist pushes). Autopilot spend is bounded by
 a shared daily budget (`AUTOPILOT_MAX_DRAFTS_PER_DAY`) so hourly runs
 cannot multiply cost. Logs: `logs/hourly-*.log`, `logs/daily-*.log`.
 Push/sync steps are best-effort so unconfigured channels never sink the
-run. `make unschedule` removes both.
+run. `karani unschedule` removes both.
 
 **Motivation:** `make daily` exists but nothing invokes it.
 
@@ -94,7 +94,7 @@ to *see* it without opening a file manager.
 
 **Shipped (2026-08):** Slack is the delivery channel — `notify` (CLI),
 `notify_slack` (MCP), and the two-way Socket Mode bridge
-(`python -m slackbridge`, ADR 0010) so Kelyn can react (`verdict 123
+(`karani slack`, ADR 0010) so Kelyn can react (`verdict 123
 apply`) and ask (`actions`, `prep 45`, `recall gitlab`) from the same
 thread the digest lands in. The MCP server (ADR 0008) remains the
 equivalent surface for MCP clients. Remaining: wire `notify` into the
@@ -125,7 +125,7 @@ Buckets: review (fit + freshness ranked), to_draft, to_submit, follow_up
 
 ### 1.5.3 Warm-path finder — SHIPPED (2026-08)
 
-Shipped: `intel/` dossiers cache public GitHub org members with enriched
+Shipped: `karani/intel/` dossiers cache public GitHub org members with enriched
 profiles (name/bio/blog); `find_warm_paths` overlap-scores them against
 the user's skill vocabulary at read time (`warm_score` + matched terms,
 best first) and prep packs draft an opener per contact. Applications are

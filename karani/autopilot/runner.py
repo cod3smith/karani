@@ -8,19 +8,24 @@ so they leave the candidate pool).
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass, field
 
-from ingestion.storage import Storage
-from notionsync import maybe_sync_job
+from karani.ingestion.storage import Storage
+from karani.notionsync import maybe_sync_job
 
 log = logging.getLogger(__name__)
 
-DEFAULT_MIN_FIT = int(os.getenv("AUTOPILOT_MIN_FIT", "85"))
-DEFAULT_MAX_DRAFTS = int(os.getenv("AUTOPILOT_MAX_DRAFTS", "3"))
-# Hard daily spend ceiling across all runs — what makes hourly scheduling
-# safe: 24 runs/day share this budget, they don't multiply it.
-DEFAULT_DAILY_CAP = int(os.getenv("AUTOPILOT_MAX_DRAFTS_PER_DAY", "5"))
+def _caps() -> tuple[int, int, int]:
+    """(min_fit, max_drafts, daily_cap) — env > karani.toml > defaults.
+    The daily cap is what makes hourly scheduling safe: 24 runs/day
+    share one budget, they don't multiply it."""
+    from karani.config import get_config
+    from karani.config.loader import resolve
+    ac = get_config().autopilot
+    return (int(resolve("AUTOPILOT_MIN_FIT", ac.min_fit, 85)),
+            int(resolve("AUTOPILOT_MAX_DRAFTS", ac.max_drafts, 3)),
+            int(resolve("AUTOPILOT_MAX_DRAFTS_PER_DAY",
+                        ac.max_drafts_per_day, 5)))
 
 
 @dataclass
@@ -35,15 +40,20 @@ class AutopilotStats:
 async def run_autopilot(
     storage: Storage, *,
     slack, channel: str,
-    make_qualifier, load_resume,
-    min_fit: int = DEFAULT_MIN_FIT,
-    max_drafts: int = DEFAULT_MAX_DRAFTS,
-    daily_cap: int = DEFAULT_DAILY_CAP,
+    make_qualifier=None, load_resume=None,
+    min_fit: int | None = None,
+    max_drafts: int | None = None,
+    daily_cap: int | None = None,
 ) -> AutopilotStats:
     """Draft + deliver packs for the top candidates, bounded twice:
     `max_drafts` per run AND `daily_cap` per UTC day across all runs."""
-    from drafting import build_application_pack
-    from slackbridge.blocks import pack_blocks
+    from karani.drafting import build_application_pack
+    from karani.slackbridge.blocks import pack_blocks
+
+    cfg_min_fit, cfg_max, cfg_daily = _caps()
+    min_fit = cfg_min_fit if min_fit is None else min_fit
+    max_drafts = cfg_max if max_drafts is None else max_drafts
+    daily_cap = cfg_daily if daily_cap is None else daily_cap
 
     stats = AutopilotStats()
     if max_drafts <= 0:
@@ -65,7 +75,7 @@ async def run_autopilot(
         return stats
 
     resume = load_resume()
-    client = make_qualifier()
+    client = make_qualifier() if make_qualifier else None
     for row in rows:
         job_id = row["id"]
         try:

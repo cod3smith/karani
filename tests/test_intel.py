@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-import intel.service as svc
-from ingestion.storage import Storage
+import karani.intel.service as svc
+from karani.ingestion.storage import Storage
 
 NOW = datetime(2026, 8, 27, 12, 0, 0, tzinfo=timezone.utc)
 

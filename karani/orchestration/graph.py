@@ -67,7 +67,7 @@ async def _with_retry(name: str, fn, attempts: int = 2) -> tuple[Any, str | None
 
 def build_hunt_graph(deps: HuntDeps):
     async def ingest(state: HuntState) -> dict:
-        from ingestion.orchestrator import run as run_ingestion
+        from karani.ingestion.orchestrator import run as run_ingestion
 
         async def body():
             stats = await run_ingestion(deps.storage)
@@ -80,7 +80,7 @@ def build_hunt_graph(deps: HuntDeps):
                 else {"errors": [err]})
 
     async def qualify(state: HuntState) -> dict:
-        from qualification import qualify_pending
+        from karani.qualification import qualify_pending
 
         async def body():
             stats = await qualify_pending(
@@ -95,7 +95,7 @@ def build_hunt_graph(deps: HuntDeps):
                 else {"errors": [err]})
 
     async def autopilot(state: HuntState) -> dict:
-        from autopilot import run_autopilot
+        from karani.autopilot import run_autopilot
 
         if not deps.slack_factory or not deps.channel:
             return {"autopilot": {"skipped": "slack not configured"}}
@@ -116,7 +116,7 @@ def build_hunt_graph(deps: HuntDeps):
                 else {"errors": [err]})
 
     async def notion(state: HuntState) -> dict:
-        from notionsync import NotionClient, sync_jobs
+        from karani.notionsync import NotionClient, sync_jobs
 
         database_id = os.getenv("NOTION_DATABASE_ID", "")
         if not database_id or not os.getenv("NOTION_TOKEN", ""):
@@ -166,11 +166,11 @@ def build_hunt_graph(deps: HuntDeps):
 
 async def run_hunt_once() -> HuntState:
     """Wire real dependencies and run one pass. The entry the scheduler hits."""
-    from ingestion.config import settings
-    from ingestion.resume import DEFAULT_RESUME_PATH, ResumeProfile
-    from ingestion.storage import Storage
-    from memory import MemoryManager
-    from qualification import get_qualifier
+    from karani.ingestion.config import settings
+    from karani.ingestion.resume import DEFAULT_RESUME_PATH, ResumeProfile
+    from karani.ingestion.storage import Storage
+    from karani.memory import MemoryManager
+    from karani.qualification import get_qualifier
 
     storage = Storage(settings.database_url)
     await storage.connect()
@@ -178,7 +178,7 @@ async def run_hunt_once() -> HuntState:
         channel = os.getenv("SLACK_CHANNEL", "")
         slack_factory = None
         if channel and os.getenv("SLACK_BOT_TOKEN"):
-            from slackbridge import SlackClient
+            from karani.slackbridge import SlackClient
             slack_factory = SlackClient
         deps = HuntDeps(
             storage=storage,

@@ -59,7 +59,7 @@ memory costs zero tokens. The vector store reads `MEM0_PG_URL`
 `DATABASE_URL`, so the ledger can live in Neon while the disposable
 index stays local. Every knob is env-overridable (`MEM0_*` in
 `.env.example`); rebuild the index any time with
-`python -m ingestion.cli reindex`.
+`karani reindex`.
 
 Failure policy: any mem0 error (extra not installed, Ollama down, vector
 store unreachable) logs a warning and degrades to `basic` — writes still
@@ -119,7 +119,7 @@ KARANI_MEMORY=off | basic | mem0     # default: basic
 ```
 
 - Runs with no infra: `basic` works on the in-memory Storage fallback.
-- Full stack: `make infra-up-llm` (pgvector Postgres + Ollama),
+- Full stack: `karani infra up --profile local-llm` (pgvector Postgres + Ollama),
   `uv sync --extra memory`, `KARANI_MEMORY=mem0`.
 - Rebuild the semantic index after config changes: drop the
   `karani_memories` pgvector collection and replay the ledger

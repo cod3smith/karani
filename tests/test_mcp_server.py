@@ -12,12 +12,12 @@ import json
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
-import mcp_server.server as srv
-from ingestion.filters import pre_filter
-from ingestion.models import Job, RemoteStatus, Source
-from ingestion.profile import DEFAULT_PROFILE
-from ingestion.resume import ResumeProfile
-from ingestion.storage import Storage
+import karani.mcp_server.server as srv
+from karani.ingestion.filters import pre_filter
+from karani.ingestion.models import Job, RemoteStatus, Source
+from karani.ingestion.profile import DEFAULT_PROFILE
+from karani.ingestion.resume import ResumeProfile
+from karani.ingestion.storage import Storage
 
 
 QUAL_RESPONSE = json.dumps({
@@ -163,7 +163,7 @@ async def test_full_flow_through_tools(storage, monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_ingest_tool_reports_run_stats(storage, monkeypatch):
-    from ingestion.orchestrator import RunStats, SourceOutcome
+    from karani.ingestion.orchestrator import RunStats, SourceOutcome
 
     async def fake_run(_storage, profile=None):
         stats = RunStats(fetched=3, inserted=2, updated=1, passed_prefilter=1)
@@ -171,8 +171,8 @@ async def test_ingest_tool_reports_run_stats(storage, monkeypatch):
         stats.dropped_by_reason["region"] = 2
         return stats
 
-    import ingestion.orchestrator
-    monkeypatch.setattr(ingestion.orchestrator, "run", fake_run)
+    import karani.ingestion.orchestrator
+    monkeypatch.setattr(karani.ingestion.orchestrator, "run", fake_run)
     result = await _call("ingest", {})
     assert result["fetched"] == 3
     assert result["per_source"]["greenhouse/gitlab"]["fetched"] == 3
@@ -239,9 +239,9 @@ def fake_intel(monkeypatch):
                                  "url": "https://github.com/alice",
                                  "source": "github_org_member"}]}}
 
-    import intel.service
-    monkeypatch.setattr(intel.service, "get_company_intel", fake_get)
-    monkeypatch.setattr("intel.get_company_intel", fake_get)
+    import karani.intel.service
+    monkeypatch.setattr(karani.intel.service, "get_company_intel", fake_get)
+    monkeypatch.setattr("karani.intel.get_company_intel", fake_get)
 
 
 @pytest.mark.asyncio
@@ -296,7 +296,7 @@ async def test_notify_slack_tool(storage, monkeypatch):
             posts.append({"channel": channel, "text": text, "blocks": blocks})
             return {"ok": True}
 
-    import slackbridge
+    import karani.slackbridge as slackbridge
     monkeypatch.setattr(slackbridge, "SlackClient", StubSlack)
     monkeypatch.setenv("SLACK_CHANNEL", "D42")
     result = await _call("notify_slack", {"kind": "actions"})
@@ -322,7 +322,7 @@ async def test_autopilot_tool(storage, monkeypatch, tmp_path):
             posts.append(channel)
             return {"ok": True}
 
-    import slackbridge
+    import karani.slackbridge as slackbridge
     monkeypatch.setattr(slackbridge, "SlackClient", StubSlack)
     monkeypatch.setattr(srv, "_make_qualifier",
                         lambda p, m: ScriptedLLM(DRAFT_RESPONSE))
@@ -348,7 +348,7 @@ async def test_notion_sync_tool(storage, monkeypatch):
         calls.append(database_id)
         return {"tracked": 2, "created": 1, "updated": 1, "errors": 0}
 
-    import notionsync
+    import karani.notionsync as notionsync
     monkeypatch.setattr(notionsync, "sync_jobs", fake_sync)
     monkeypatch.setattr(notionsync, "NotionClient", lambda: object())
     monkeypatch.setenv("NOTION_DATABASE_ID", "db-42")
@@ -385,8 +385,8 @@ async def test_discover_tool_reports_probe_outcomes(storage, monkeypatch):
             {"company": "NoBoardCo", "ats": None, "slug": None},
         ]
 
-    import ingestion.discovery
-    monkeypatch.setattr(ingestion.discovery, "probe_unpromoted", fake_probe)
+    import karani.ingestion.discovery
+    monkeypatch.setattr(karani.ingestion.discovery, "probe_unpromoted", fake_probe)
     result = await _call("discover", {"limit": 5})
     assert result["probed"] == 2
     assert result["promoted_now"] == 1

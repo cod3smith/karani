@@ -75,7 +75,7 @@
 
 The rule of thumb: **each package should be independently substitutable.**
 
-### `ingestion/`
+### `karani/ingestion/`
 
 Everything before "does this row deserve LLM budget?" No LLM imports,
 no OpenAI/Anthropic SDK references. If ingestion needs an LLM decision,
@@ -88,7 +88,7 @@ Public surface:
 - `Storage` class
 - `Job`, `PreFilterResult`, `RoleCategory`, `Seniority`, `RemoteStatus`
 
-### `qualification/`
+### `karani/qualification/`
 
 Everything "does this row match Kelyn?" The only place LLM calls happen
 for filtering.
@@ -101,7 +101,7 @@ Public surface:
 - `QualificationResult` pydantic model
 - `Tool`, `ToolRegistry`, `default_registry()`
 
-### `drafting/`
+### `karani/drafting/`
 
 Everything "produce something Kelyn will send." Also LLM-backed.
 
@@ -109,13 +109,13 @@ Public surface:
 - `draft_for_job(client, resume, job_row, qualification)` → `(DraftPackage, Path)`
 - `DraftPackage` pydantic model
 
-Additional surfaces in `drafting/`: `keywords.py` (deterministic ATS
+Additional surfaces in `karani/drafting/`: `keywords.py` (deterministic ATS
 keyword-gap scoring — resume gaps feed the draft prompt, final coverage
 persists to `draft_keyword_coverage`), `prep.py` (interview prep pack:
 gap-derived questions + dossier-grounded questions to ask), and
 `followup.py` (dossier-hooked notes for silent applications).
 
-### `intel/`
+### `karani/intel/`
 
 Cached company dossiers: public probes (GitHub org, Wikipedia, public
 org members as warm-path candidates) → `company_intel` table, TTL 14
@@ -127,7 +127,7 @@ Public surface:
 - `find_warm_paths(storage, company)` → candidate list
 - `dossier_text(intel)` → prompt-ready rendering
 
-### `slackbridge/`
+### `karani/slackbridge/`
 
 The two-way Slack surface (ADR 0010). Push half (`SlackClient`,
 `blocks.py`) is httpx-only and works in cron; pull half (`listener.py`,
@@ -138,9 +138,9 @@ server — third thin adapter, same sync rule.
 Public surface:
 - `SlackClient.post_message(channel, text, blocks)`
 - `handle_command(text, storage=..., memory=...)` → mrkdwn reply
-- `python -m slackbridge` — the listener daemon
+- `karani slack` — the listener daemon
 
-### `autopilot/`
+### `karani/autopilot/`
 
 The continuous hunt (ADR 0012). One pass = `autopilot_candidates`
 (qualified, fit >= floor, unreviewed, not in the state machine) →
@@ -155,7 +155,7 @@ Public surface:
 - `run_autopilot(storage, slack=..., channel=..., make_qualifier=...,
   load_resume=..., min_fit=85, max_drafts=3)` → `AutopilotStats`
 
-### `notionsync/`
+### `karani/notionsync/`
 
 The Notion job-hunt board (ADR 0011): one-way mirror, Postgres stays the
 source of truth. `client.py` is Notion REST over httpx; `sync.py` holds
@@ -170,7 +170,7 @@ Public surface:
 - `sync_jobs(storage, client, database_id)` → counts
 - `maybe_sync_job(storage, job_id)` → bool
 
-### `memory/`
+### `karani/memory/`
 
 The memory layer (full doc: `docs/memory.md`, decision: ADR 0009).
 `MemoryManager` is the single interface: `remember`/`recall` plus the
@@ -187,7 +187,7 @@ Public surface:
   `remember_verdict(row, v)`, `remember_outcome(row, o)`,
   `recall_for_job(row)`
 
-### `mcp_server/`
+### `karani/mcp_server/`
 
 The interactive interface layer — an MCP server (official `mcp` SDK 2.x,
 stdio) exposing 25 tools that map 1:1 onto the CLI verbs. Strictly a thin
@@ -200,7 +200,7 @@ resume. Expected user-input failures raise `ToolError` so the message
 survives the SDK's exception masking. See ADR 0008.
 
 Public surface:
-- `app` — the `MCPServer` instance (`python -m mcp_server` serves stdio)
+- `app` — the `MCPServer` instance (`karani mcp` serves stdio)
 - `use_storage(storage)` — inject/reset the storage singleton
 
 ### Cross-package contract

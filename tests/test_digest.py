@@ -1,7 +1,7 @@
 """Digest renderers: text / markdown / html."""
 from __future__ import annotations
 
-from ingestion.digest import render, render_html, render_markdown, render_text
+from karani.ingestion.digest import render, render_html
 
 
 def _rows():

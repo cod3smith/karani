@@ -23,9 +23,9 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from ingestion.profile import DEFAULT_PROFILE
-from ingestion.storage import Storage
-from qualification.tools import github_org, wikipedia_summary
+from karani.ingestion.profile import DEFAULT_PROFILE
+from karani.ingestion.storage import Storage
+from karani.qualification.tools import github_org, wikipedia_summary
 
 log = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from drafting.keywords import coverage, extract_keywords
-from drafting.runner import draft_for_job
+from karani.drafting.keywords import coverage, extract_keywords
+from karani.drafting.runner import draft_for_job
 
 
 def test_extract_keywords_word_boundary():

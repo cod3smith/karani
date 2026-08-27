@@ -56,10 +56,10 @@ cp data/resume.md.example data/resume.md
 # → replace with your real resume
 
 # smoke
-python -m ingestion.cli stats
-python -m ingestion.cli run
-python -m ingestion.cli qualify --limit 5
-python -m ingestion.cli digest --format html --output data/digest.html
+karani stats
+karani run
+karani qualify --limit 5
+karani digest --format html --output data/digest.html
 ```
 
 ## Daily loop (recommended cron)
@@ -110,7 +110,7 @@ Load: `launchctl load ~/Library/LaunchAgents/dev.karani.daily.plist`
 **Rotate every 90 days** for hygiene, immediately on any exposure:
 
 1. **Neon DSN password.** Neon dashboard → roles → rotate. Update
-   `.env`. Test: `python -m ingestion.cli stats`.
+   `.env`. Test: `karani stats`.
 2. **OpenRouter API key.** OpenRouter dashboard → keys → new key +
    revoke old. Update `.env`. Test: run a single-row `qualify`.
 3. **Anthropic key** (if using). Same drill on the Anthropic console.

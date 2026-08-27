@@ -18,7 +18,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
-from qualification.client import QualifierClient, _extract_json
+from karani.qualification.client import QualifierClient, _extract_json
 
 from .humanize import AI_TELLS
 from .keywords import coverage, extract_keywords

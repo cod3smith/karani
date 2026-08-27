@@ -23,12 +23,25 @@ import os
 from typing import Any
 from urllib.parse import urlparse
 
-from ingestion.storage import Storage
+from karani.ingestion.storage import Storage
 
 log = logging.getLogger(__name__)
 
-DEFAULT_MODE = os.getenv("KARANI_MEMORY", "basic")
-MEM0_USER_ID = os.getenv("MEM0_USER_ID", "kelyn")
+# mem0 ships PostHog telemetry by default; a job hunt is nobody's
+# analytics event.
+os.environ.setdefault("MEM0_TELEMETRY", "False")
+
+
+def _default_mode() -> str:
+    from karani.config import get_config
+    from karani.config.loader import resolve
+    return resolve("KARANI_MEMORY", get_config().memory.mode, "basic")
+
+
+def _user_id() -> str:
+    from karani.config import get_config
+    from karani.config.loader import resolve
+    return resolve("MEM0_USER_ID", get_config().memory.user_id, "kelyn")
 
 
 def _mem0_config() -> dict[str, Any]:
@@ -39,11 +52,18 @@ def _mem0_config() -> dict[str, Any]:
     in Neon while the derived vector index stays local and disposable;
     pointing them at the same database also works.
     """
-    dsn = urlparse(os.getenv(
-        "MEM0_PG_URL",
-        os.getenv("DATABASE_URL", "postgresql://karani:karani@localhost:5433/karani"),
+    from karani.config import get_config
+    from karani.config.loader import resolve
+
+    mc = get_config().memory
+    dsn = urlparse(resolve(
+        "MEM0_PG_URL", mc.pg_url,
+        os.getenv("DATABASE_URL",
+                  "postgresql://karani:karani@localhost:5433/karani"),
     ))
-    ollama_url = os.getenv("MEM0_OLLAMA_URL", "http://localhost:11434")
+    ollama_url = resolve("MEM0_OLLAMA_URL", mc.ollama_url,
+                         "http://localhost:11434")
+    dims = int(resolve("MEM0_EMBED_DIMS", mc.embed_dims, 768))
     return {
         "vector_store": {
             "provider": "pgvector",
@@ -53,10 +73,10 @@ def _mem0_config() -> dict[str, Any]:
                 "user": dsn.username or "karani",
                 "password": dsn.password or "karani",
                 "dbname": (dsn.path or "/karani").lstrip("/"),
-                "collection_name": os.getenv("MEM0_COLLECTION", "karani_memories"),
+                "collection_name": resolve("MEM0_COLLECTION", mc.collection, "karani_memories"),
                 # Must match the embedder's output dims (nomic-embed-text
                 # = 768); mem0's default assumes OpenAI's 1536.
-                "embedding_model_dims": int(os.getenv("MEM0_EMBED_DIMS", "768")),
+                "embedding_model_dims": dims,
             },
         },
         "llm": {
@@ -64,16 +84,16 @@ def _mem0_config() -> dict[str, Any]:
             "config": {
                 # Memory extraction is a small-model task; no need for the
                 # big qualification model here.
-                "model": os.getenv("MEM0_LLM_MODEL", "llama3.2:3b"),
+                "model": resolve("MEM0_LLM_MODEL", mc.llm_model, "llama3.2:3b"),
                 "ollama_base_url": ollama_url,
             },
         },
         "embedder": {
             "provider": os.getenv("MEM0_EMBEDDER_PROVIDER", "ollama"),
             "config": {
-                "model": os.getenv("MEM0_EMBEDDER_MODEL", "nomic-embed-text"),
+                "model": resolve("MEM0_EMBEDDER_MODEL", mc.embedder_model, "nomic-embed-text"),
                 "ollama_base_url": ollama_url,
-                "embedding_dims": int(os.getenv("MEM0_EMBED_DIMS", "768")),
+                "embedding_dims": dims,
             },
         },
     }
@@ -92,10 +112,10 @@ class _Mem0Backend:
         # mem0's extraction LLM rephrase (or drop) them.
         def _add():
             try:
-                self._client.add(content, user_id=MEM0_USER_ID,
+                self._client.add(content, user_id=_user_id(),
                                  metadata=metadata, infer=False)
             except TypeError:  # older mem0 without infer kwarg
-                self._client.add(content, user_id=MEM0_USER_ID,
+                self._client.add(content, user_id=_user_id(),
                                  metadata=metadata)
         await asyncio.to_thread(_add)
 
@@ -105,12 +125,12 @@ class _Mem0Backend:
                 # mem0 >= 1.0 API: filters + top_k
                 return self._client.search(
                     query, top_k=limit,
-                    filters={"user_id": MEM0_USER_ID},
+                    filters={"user_id": _user_id()},
                 )
             except (TypeError, ValueError):
                 # legacy API: top-level user_id + limit
                 return self._client.search(
-                    query, user_id=MEM0_USER_ID, limit=limit,
+                    query, user_id=_user_id(), limit=limit,
                 )
         result = await asyncio.to_thread(_search)
         hits = result.get("results", result) if isinstance(result, dict) else result
@@ -125,7 +145,7 @@ class _Mem0Backend:
 class MemoryManager:
     def __init__(self, storage: Storage, mode: str | None = None):
         self.storage = storage
-        self.mode = (mode or DEFAULT_MODE).lower()
+        self.mode = (mode or _default_mode()).lower()
         if self.mode not in ("off", "basic", "mem0"):
             raise ValueError("KARANI_MEMORY must be off, basic, or mem0")
         self._mem0: _Mem0Backend | None = None

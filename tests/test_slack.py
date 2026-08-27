@@ -8,17 +8,17 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-import slackbridge.client as client_mod
-from ingestion.filters import pre_filter
-from ingestion.models import Job, RemoteStatus, Source
-from ingestion.profile import DEFAULT_PROFILE
-from ingestion.resume import ResumeProfile
-from ingestion.storage import Storage
-from memory import MemoryManager
-from slackbridge.blocks import actions_blocks, digest_blocks
-from slackbridge.client import SlackClient, SlackError
-from slackbridge.commands import handle_command
-from slackbridge.listener import handle_event
+import karani.slackbridge.client as client_mod
+from karani.ingestion.filters import pre_filter
+from karani.ingestion.models import Job, RemoteStatus, Source
+from karani.ingestion.profile import DEFAULT_PROFILE
+from karani.ingestion.resume import ResumeProfile
+from karani.ingestion.storage import Storage
+from karani.memory import MemoryManager
+from karani.slackbridge.blocks import actions_blocks, digest_blocks
+from karani.slackbridge.client import SlackClient, SlackError
+from karani.slackbridge.commands import handle_command
+from karani.slackbridge.listener import handle_event
 
 
 # --- client ---
@@ -184,8 +184,8 @@ async def test_status_warm_marker(env):
     assert (await storage.get_job(job_id))["warm_path_used"] is True
     # Unmarked applied nudges toward tagging next time.
     other = _job("2")
-    from ingestion.filters import pre_filter as pf
-    from ingestion.profile import DEFAULT_PROFILE as prof
+    from karani.ingestion.filters import pre_filter as pf
+    from karani.ingestion.profile import DEFAULT_PROFILE as prof
     r2 = await storage.upsert(other, pf(other, prof))
     hint = await _cmd(env, f"status {r2['id']} applied")
     assert "warm" in hint.lower()
@@ -225,7 +225,7 @@ async def test_sync_command(env, monkeypatch):
     async def fake_sync(_storage, _client, database_id):
         return {"tracked": 3, "created": 1, "updated": 2, "errors": 0}
 
-    import notionsync
+    import karani.notionsync as notionsync
     monkeypatch.setattr(notionsync, "sync_jobs", fake_sync)
     monkeypatch.setattr(notionsync, "NotionClient", lambda: object())
     monkeypatch.setenv("NOTION_DATABASE_ID", "db-1")
@@ -254,7 +254,7 @@ async def test_command_errors_never_raise(env):
 @pytest.mark.asyncio
 async def test_listener_rejects_wrong_token_types(monkeypatch):
     pytest.importorskip("slack_sdk")
-    from slackbridge.listener import run_listener
+    from karani.slackbridge.listener import run_listener
 
     # Bot token where the app token should be -> immediate, clear error.
     monkeypatch.setenv("SLACK_APP_TOKEN", "xoxb-not-an-app-token")

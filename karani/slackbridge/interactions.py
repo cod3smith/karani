@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import logging
 
-from ingestion.storage import Storage
-from notionsync import maybe_sync_job
+from karani.ingestion.storage import Storage
+from karani.notionsync import maybe_sync_job
 
 log = logging.getLogger(__name__)
 

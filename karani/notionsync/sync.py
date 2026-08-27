@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from ingestion.storage import Storage
+from karani.ingestion.storage import Storage
 
 from .client import NotionClient, NotionError
 
@@ -158,7 +158,10 @@ async def maybe_sync_job(storage: Storage, job_id: int) -> bool:
     """
     import os
 
-    database_id = os.getenv("NOTION_DATABASE_ID", "")
+    from karani.config import get_config
+    from karani.config.loader import resolve
+    database_id = resolve("NOTION_DATABASE_ID",
+                          get_config().notion.database_id, "")
     if not database_id or not os.getenv("NOTION_TOKEN", ""):
         return False
     try:

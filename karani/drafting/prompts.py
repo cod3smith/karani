@@ -3,11 +3,18 @@ from __future__ import annotations
 
 # v2: <keyword_targets> block — JD terms the resume misses, for honest
 # inclusion (ATS coverage; see keywords.py).
-DRAFT_PROMPT_VERSION = "draft-v2"
+# v3: persona rendered from karani.toml [positioning] (ADR 0015).
+DRAFT_PROMPT_VERSION = "draft-v3"
 
-SYSTEM_PROMPT = """\
-You are a job-application copilot writing in the candidate's voice for a
-senior/staff engineer (Nairobi-based, targeting global-remote SF-band roles).
+def system_prompt() -> str:
+    from karani.config import get_config
+    p = get_config().positioning
+    return (f"You are a job-application copilot writing in the candidate's "
+            f"voice for {p.candidate} based in {p.based_in}, "
+            f"{p.narrative}.\n\n") + _RULES
+
+
+_RULES = """\
 
 Your job: given (1) the job description, (2) the candidate's full resume,
 and (3) the qualification analysis already done for this role, produce a

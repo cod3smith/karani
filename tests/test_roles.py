@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from ingestion.models import RoleCategory, Seniority
-from ingestion.roles import classify
+from karani.ingestion.models import RoleCategory, Seniority
+from karani.ingestion.roles import classify
 
 
 CASES = [

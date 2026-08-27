@@ -7,9 +7,9 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-import qualification.openrouter as openrouter_mod
-from qualification.factory import get_qualifier
-from qualification.local import LocalQualifier
+import karani.qualification.openrouter as openrouter_mod
+from karani.qualification.factory import get_qualifier
+from karani.qualification.local import LocalQualifier
 
 
 def test_factory_dispatches_local():

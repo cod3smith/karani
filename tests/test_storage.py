@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from ingestion.filters import pre_filter
-from ingestion.models import Job, RemoteStatus, Source
-from ingestion.storage import Storage
-from qualification.models import QualificationResult
+from karani.ingestion.filters import pre_filter
+from karani.ingestion.models import Job, RemoteStatus, Source
+from karani.ingestion.storage import Storage
+from karani.qualification.models import QualificationResult
 
 
 def _make_job(source_id="g1", title="Senior Backend Engineer", **kwargs):
@@ -29,7 +29,7 @@ def _make_job(source_id="g1", title="Senior Backend Engineer", **kwargs):
 async def test_storage_falls_back_when_db_is_unavailable(monkeypatch):
     async def fail_create_pool(*args, **kwargs):
         raise OSError("database unavailable")
-    import ingestion.storage as storage_module
+    import karani.ingestion.storage as storage_module
     monkeypatch.setattr(storage_module.asyncpg, "create_pool", fail_create_pool)
 
     storage = Storage("postgresql://localhost/jobs")

@@ -47,13 +47,16 @@ class ArtifactStore:
                         "(uv sync --extra artifacts)")
             return None
         try:
+            from karani.config import get_config
+            from karani.config.loader import resolve
+            acfg = get_config().artifacts
             client = Minio(
-                os.getenv("MINIO_ENDPOINT", DEFAULT_ENDPOINT),
+                resolve("MINIO_ENDPOINT", acfg.endpoint, DEFAULT_ENDPOINT),
                 access_key=os.getenv("MINIO_ACCESS_KEY"),
                 secret_key=os.getenv("MINIO_SECRET_KEY"),
                 secure=os.getenv("MINIO_SECURE", "false").lower() == "true",
             )
-            bucket = os.getenv("MINIO_BUCKET", DEFAULT_BUCKET)
+            bucket = resolve("MINIO_BUCKET", acfg.bucket, DEFAULT_BUCKET)
 
             def _ensure():
                 if not client.bucket_exists(bucket):

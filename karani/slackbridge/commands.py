@@ -12,9 +12,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from ingestion.digest import render as render_digest
-from ingestion.resume import DEFAULT_RESUME_PATH, ResumeProfile
-from ingestion.storage import Storage, _days_ago
+from karani.ingestion.digest import render as render_digest
+from karani.ingestion.resume import DEFAULT_RESUME_PATH, ResumeProfile
+from karani.ingestion.storage import Storage, _days_ago
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ HELP = """\
 
 
 def _default_make_qualifier(provider=None, model=None):
-    from qualification import get_qualifier
+    from karani.qualification import get_qualifier
     return get_qualifier(provider=provider, model=model)
 
 
@@ -129,7 +129,7 @@ async def _dispatch(cmd, args, storage, memory,
         row = await storage.get_job(job_id)
         if row and memory is not None:
             await memory.remember_verdict(row, args[1].lower())
-        from notionsync import maybe_sync_job
+        from karani.notionsync import maybe_sync_job
         await maybe_sync_job(storage, job_id)
         return f"Recorded: job {job_id} → {args[1].lower()}."
 
@@ -142,7 +142,7 @@ async def _dispatch(cmd, args, storage, memory,
             warm = args[2].lower() == "warm"
         await storage.set_application_status(job_id, args[1].lower(),
                                              warm_path=warm)
-        from notionsync import maybe_sync_job
+        from karani.notionsync import maybe_sync_job
         await maybe_sync_job(storage, job_id)
         note = "" if warm is None else f" ({args[2].lower()} path)"
         hint = ("" if args[1].lower() != "applied" or warm is not None
@@ -181,12 +181,12 @@ async def _dispatch(cmd, args, storage, memory,
         row = await storage.get_job(job_id)
         if row and memory is not None:
             await memory.remember_outcome(row, args[1].lower())
-        from notionsync import maybe_sync_job
+        from karani.notionsync import maybe_sync_job
         await maybe_sync_job(storage, job_id)
         return f"Outcome recorded: job {job_id} → {args[1].lower()}."
 
     if cmd == "qualify":
-        from qualification import qualify_pending
+        from karani.qualification import qualify_pending
         limit = int(args[0]) if args and args[0].isdigit() else 5
         resume = load_resume()
         stats = await qualify_pending(storage, make_qualifier(), resume,
@@ -196,7 +196,7 @@ async def _dispatch(cmd, args, storage, memory,
                 f"{stats.skipped} skip, {len(stats.errors)} errors.")
 
     if cmd == "draft":
-        from drafting import build_application_pack
+        from karani.drafting import build_application_pack
         job_id = _need_id(args)
         row = await storage.get_job(job_id)
         if not row:
@@ -207,7 +207,7 @@ async def _dispatch(cmd, args, storage, memory,
         )
         if pack.failed:
             return "Draft failed (malformed LLM output) — try again."
-        from notionsync import maybe_sync_job
+        from karani.notionsync import maybe_sync_job
         await maybe_sync_job(storage, job_id)
         pkg = pack.pkg
         letter = pkg.cover_letter.strip()
@@ -226,8 +226,8 @@ async def _dispatch(cmd, args, storage, memory,
                 + f"\n\n*Cover letter:*\n>>> {letter}")
 
     if cmd == "prep":
-        from drafting import prep_for_job
-        from intel import dossier_text, get_company_intel
+        from karani.drafting import prep_for_job
+        from karani.intel import dossier_text, get_company_intel
         job_id = _need_id(args)
         row = await storage.get_job(job_id)
         if not row:
@@ -254,8 +254,8 @@ async def _dispatch(cmd, args, storage, memory,
                 f"Full pack (answers + warm openers) in the file.")
 
     if cmd == "followup":
-        from drafting import followup_for_job
-        from intel import dossier_text, get_company_intel
+        from karani.drafting import followup_for_job
+        from karani.intel import dossier_text, get_company_intel
         job_id = _need_id(args)
         row = await storage.get_job(job_id)
         if not row:
@@ -271,7 +271,7 @@ async def _dispatch(cmd, args, storage, memory,
         return f"Follow-up note: `{path}`\n\n> {pkg.note}"
 
     if cmd == "intel":
-        from intel import dossier_text, get_company_intel
+        from karani.intel import dossier_text, get_company_intel
         if not args:
             return "Usage: `intel <company>`"
         intel = await get_company_intel(storage, " ".join(args))
@@ -279,7 +279,7 @@ async def _dispatch(cmd, args, storage, memory,
         return f"*Dossier{cached}:*\n{dossier_text(intel)[:2800]}"
 
     if cmd == "warm":
-        from intel import find_warm_paths
+        from karani.intel import find_warm_paths
         if not args:
             return "Usage: `warm <company>`"
         paths = await find_warm_paths(storage, " ".join(args))
@@ -291,7 +291,7 @@ async def _dispatch(cmd, args, storage, memory,
     if cmd == "sync":
         import os
 
-        from notionsync import NotionClient, NotionError, sync_jobs
+        from karani.notionsync import NotionClient, NotionError, sync_jobs
         database_id = os.getenv("NOTION_DATABASE_ID", "")
         if not database_id:
             return ("Notion is not configured — set NOTION_TOKEN and "

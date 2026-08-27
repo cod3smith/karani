@@ -14,7 +14,7 @@ from typing import Protocol
 from pydantic import ValidationError
 
 from .models import QualificationResult
-from .prompts import PROMPT_VERSION, SYSTEM_PROMPT, build_user_prompt
+from .prompts import PROMPT_VERSION, build_user_prompt, system_prompt
 
 log = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ async def qualify_one(
         resume=resume, hints=hints, job_row=job_row,
         past_verdicts=past_verdicts, memories=memories,
     )
-    raw = await client.complete(SYSTEM_PROMPT, user)
+    raw = await client.complete(system_prompt(), user)
     try:
         data = _extract_json(raw)
         result = QualificationResult.model_validate(data)

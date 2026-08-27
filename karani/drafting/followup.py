@@ -13,11 +13,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
-from qualification.client import QualifierClient, _extract_json
+from karani.qualification.client import QualifierClient, _extract_json
 
 log = logging.getLogger(__name__)
 
-FOLLOWUP_PROMPT_VERSION = "followup-v1"
+FOLLOWUP_PROMPT_VERSION = "followup-v1"  # persona-free; no bump needed
 
 SYSTEM_PROMPT = """\
 You write short follow-up notes for a senior/staff engineer whose job

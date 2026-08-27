@@ -14,15 +14,21 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
-from qualification.client import QualifierClient, _extract_json
+from karani.qualification.client import QualifierClient, _extract_json
 
 log = logging.getLogger(__name__)
 
-PREP_PROMPT_VERSION = "prep-v1"
+# v2: persona rendered from karani.toml [positioning] (ADR 0015).
+PREP_PROMPT_VERSION = "prep-v2"
 
-SYSTEM_PROMPT = """\
-You are an interview-prep copilot for a senior/staff engineer (Nairobi-based,
-interviewing at globally-distributed companies paying SF bands).
+def system_prompt() -> str:
+    from karani.config import get_config
+    p = get_config().positioning
+    return (f"You are an interview-prep copilot for {p.candidate} based "
+            f"in {p.based_in}, {p.narrative}.\n\n") + _RULES
+
+
+_RULES = """\
 
 Given the job, the candidate's resume, the fit analysis (including GAPS —
 the requirements the candidate doesn't obviously meet), a company dossier
@@ -182,7 +188,7 @@ async def prep_for_job(
         question_bank="\n".join(f"- {q}" for q in (question_bank or []))
         or "(no past questions recorded)",
     )
-    raw = await client.complete(SYSTEM_PROMPT, user)
+    raw = await client.complete(system_prompt(), user)
     try:
         pkg = PrepPackage.model_validate(_extract_json(raw))
     except (json.JSONDecodeError, ValidationError) as e:

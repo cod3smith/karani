@@ -19,7 +19,7 @@ import re
 
 from pydantic import BaseModel, ValidationError
 
-from qualification.client import QualifierClient, _extract_json
+from karani.qualification.client import QualifierClient, _extract_json
 
 from .models import DraftPackage
 

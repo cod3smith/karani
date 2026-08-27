@@ -12,11 +12,11 @@ from dataclasses import dataclass, field
 
 from typing import TYPE_CHECKING
 
-from ingestion.resume import ResumeProfile
-from ingestion.storage import Storage
+from karani.ingestion.resume import ResumeProfile
+from karani.ingestion.storage import Storage
 
 if TYPE_CHECKING:  # avoid a runtime import cycle with the memory package
-    from memory import MemoryManager
+    from karani.memory import MemoryManager
 
 from .agent import qualify_one_agent
 from .client import QualifierClient, qualify_one

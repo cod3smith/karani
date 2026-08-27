@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from drafting.humanize import humanize_package, voice_report
-from drafting.models import ApplicationAnswer, DraftPackage
-from drafting.resume_tailor import tailor_resume
+from karani.drafting.humanize import humanize_package, voice_report
+from karani.drafting.models import ApplicationAnswer, DraftPackage
+from karani.drafting.resume_tailor import tailor_resume
 
 
 # --- deterministic tell detection ---

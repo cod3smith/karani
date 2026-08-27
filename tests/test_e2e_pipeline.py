@@ -13,13 +13,13 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from ingestion import orchestrator
-from ingestion.digest import render as render_digest
-from ingestion.models import Source
-from ingestion.resume import ResumeProfile
-from ingestion.storage import Storage
-from ingestion.targets import Target
-from qualification.runner import qualify_pending
+from karani.ingestion import orchestrator
+from karani.ingestion.digest import render as render_digest
+from karani.ingestion.models import Source
+from karani.ingestion.resume import ResumeProfile
+from karani.ingestion.storage import Storage
+from karani.ingestion.targets import Target
+from karani.qualification.runner import qualify_pending
 
 
 GOOD_JOB = {
@@ -157,7 +157,7 @@ async def test_full_pipeline(patched_orchestrator, resume, tmp_path):
         assert "Senior Backend Engineer" in out
 
     # --- draft: fake LLM -> markdown file on disk ---
-    from drafting import draft_for_job
+    from karani.drafting import draft_for_job
 
     drafter = ScriptedLLM(DRAFT_RESPONSE)
     job_row = await storage.get_job(job_id)

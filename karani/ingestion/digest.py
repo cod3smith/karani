@@ -10,7 +10,6 @@ from __future__ import annotations
 import html
 import json
 from datetime import datetime, timezone
-from typing import Any
 
 
 def _qual(row: dict) -> dict:

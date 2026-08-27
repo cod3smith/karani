@@ -30,24 +30,24 @@ background). It:
    interviewing → offer/rejection).
 7. **Learns** from Kelyn's reactions via a `user_verdict` feedback loop that
    feeds past pairs back as few-shot examples on the next qualify run.
-8. **Serves** the whole pipeline as an MCP server (`mcp_server/`, stdio) so
+8. **Serves** the whole pipeline as an MCP server (`karani/mcp_server/`, stdio) so
    MCP clients can drive ingest/qualify/shortlist/draft/track
    conversationally. See `docs/adrs/0008-mcp-server-interface.md`.
 9. **Remembers** distilled facts (preferences, company intel, outcomes)
-   in a ledger-first memory layer (`memory/`) and injects them into
+   in a ledger-first memory layer (`karani/memory/`) and injects them into
    qualification. mem0 + pgvector optional upgrade. See `docs/memory.md`.
-10. **Converses** over Slack (`slackbridge/`, Socket Mode): pushes the
+10. **Converses** over Slack (`karani/slackbridge/`, Socket Mode): pushes the
     digest/worklist and takes the same verbs back (`verdict 123 apply`,
     `prep 45`). See `docs/adrs/0010-slack-two-way-surface.md`.
 11. **Mirrors** tracked applications onto a Notion board
-    (`notionsync/`), updated live on every state change and reconciled
+    (`karani/notionsync/`), updated live on every state change and reconciled
     by the scheduled run. See `docs/adrs/0011-notion-mirror.md`.
-12. **Hunts** continuously (`autopilot/`, `make hunt`): drafts packs
+12. **Hunts** continuously (`karani/autopilot/`, `karani hunt`): drafts packs
     for top-fit roles unattended (fit floor + per-run cap) and delivers
     Slack review cards with Approve/Skip/Applied buttons. Never submits
     — see `docs/adrs/0012-autopilot-draft-human-send.md`.
 13. **Converts**: fast-lane flags on fresh high-fit roles, ATS keyword
-    coverage per draft, cached company dossiers (`intel/`), warm-path
+    coverage per draft, cached company dossiers (`karani/intel/`), warm-path
     candidates, interview prep packs, and dossier-hooked follow-ups —
     all measured through `funnel_stats` (roadmap Tier 1.5).
 
@@ -63,109 +63,44 @@ excluded. See `docs/vision.md`.
 ## 2. Repo layout
 
 ```
-karani/
+karani/                              (repo)
 ├── CLAUDE.md                        ← you are here
-├── README.md                        ← human-facing quickstart
-├── Makefile                         ← daily / ingest / qualify / digest chains
-├── pyproject.toml
-├── .env.example
+├── README.md                        ← human quickstart (pip install karani)
+├── pyproject.toml                   ← PyPI package `karani`; `karani` CLI script
+├── Makefile                         ← thin dev aliases over the karani CLI
+├── karani.example.toml              → shipped in-wheel; see karani/resources/
+├── .env.example                     ← secrets template (keys live in env, never toml)
 │
-├── ingestion/                       ← fetch → pre-filter → store → sweep
-│   ├── config.py                    ← signals, thresholds, env
-│   ├── profile.py                   ← UserProfile: seniority bands, must-have skills
-│   ├── models.py                    ← Job, PreFilterResult, RoleCategory, Seniority
-│   ├── roles.py                     ← deterministic role + seniority classifier
-│   ├── filters.py                   ← pre_filter(): the hard gate
-│   ├── base.py                      ← HTTP retry, per-host semaphores, HTML strip
-│   ├── {greenhouse,lever,ashby,workable}.py   ← per-company ATS fetchers
-│   ├── {remoteok,himalayas,weworkremotely,remotive,aijobs}.py   ← feed fetchers
-│   ├── targets.py                   ← curated company list + FEED_SOURCES
-│   ├── orchestrator.py              ← run() = fetch → filter → upsert → sweep
-│   ├── storage.py                   ← Postgres + in-memory fallback
-│   ├── digest.py                    ← text / md / HTML renderers
-│   ├── discovery.py                 ← reverse-ATS probe for auto-promotion
-│   ├── resume.py                    ← ResumeProfile from data/resume.md
-│   └── cli.py                       ← argparse entry
+├── karani/                          ← THE installable package
+│   ├── cli.py                       ← `karani <verb>` — ~30 verbs, single entry point
+│   ├── config/                      ← karani.toml schema + loader + `karani init` wizard (ADR 0015)
+│   ├── resources/                   ← compose file, launchd templates, example toml (in-wheel)
+│   ├── ingestion/                   ← fetch → classify → pre-filter → store → sweep
+│   │     (config.py signals · profile.py · filters.py · roles.py · storage.py ·
+│   │      targets.py · orchestrator.py · digest.py · discovery.py · resume.py ·
+│   │      per-source fetchers: greenhouse/lever/ashby/workable + 5 feeds)
+│   ├── qualification/               ← LLM fit tier: prompts (versioned) · client ·
+│   │     providers (openrouter/anthropic/local) · factory (per-task routing) ·
+│   │     tools + agent loop · runner
+│   ├── drafting/                    ← pack factory: pipeline.py (draft→humanize→
+│   │     tailor→store, ALL surfaces) · keywords · humanize · resume_tailor ·
+│   │     prep · followup · writers
+│   ├── intel/                       ← cached company dossiers + warm paths (TTL 14d)
+│   ├── memory/                      ← ledger-first memory, mem0 optional (docs/memory.md)
+│   ├── slackbridge/                 ← two-way Slack: client/blocks/commands/
+│   │     interactions (pack buttons)/listener (ADR 0010)
+│   ├── notionsync/                  ← Notion board mirror, schema-adopting (ADR 0011)
+│   ├── autopilot/                   ← continuous hunt: pack + review card (ADR 0012)
+│   ├── orchestration/               ← LangGraph hourly pass (ADR 0013)
+│   ├── artifacts/                   ← MinIO/S3 per-job objects + presigned links (ADR 0014)
+│   └── mcp_server/                  ← MCP interface, 25 tools, thin adapter (ADR 0008)
 │
-├── qualification/                   ← LLM fit analysis
-│   ├── models.py                    ← QualificationResult (pydantic)
-│   ├── prompts.py                   ← versioned prompts + few-shot renderer
-│   ├── client.py                    ← QualifierClient protocol + JSON extraction
-│   ├── openrouter.py                ← default provider (Kimi K2 Thinking)
-│   ├── anthropic.py                 ← optional direct-Anthropic provider
-│   ├── local.py                     ← local OpenAI-compatible provider (Ollama etc.)
-│   ├── factory.py                   ← get_qualifier() dispatches by env
-│   ├── tools.py                     ← web_search / fetch_url / github_org / wikipedia
-│   ├── agent.py                     ← tool-using multi-turn loop
-│   └── runner.py                    ← qualify_pending() orchestration
-│
-├── drafting/                        ← the application-pack factory
-│   ├── models.py                    ← DraftPackage
-│   ├── prompts.py                   ← versioned drafting prompt
-│   ├── keywords.py                  ← deterministic ATS keyword-gap scoring
-│   ├── humanize.py                  ← AI-tell detector + voice rewrite (humanize-v*)
-│   ├── resume_tailor.py             ← full per-job resume (resume-v*)
-│   ├── pipeline.py                  ← draft→humanize→tailor→store (ALL surfaces)
-│   ├── prep.py                      ← interview prep pack (prep-v*)
-│   ├── followup.py                  ← dossier-hooked follow-up notes (followup-v*)
-│   ├── writers.py                   ← markdown emitter
-│   └── runner.py                    ← draft_for_job()
-│
-├── intel/                           ← cached company dossiers + warm paths
-│   └── service.py                   ← probes → company_intel table (TTL 14d)
-│
-├── slackbridge/                     ← two-way Slack surface (ADR 0010)
-│   ├── client.py                    ← Web API via httpx (push; no SDK)
-│   ├── blocks.py                    ← Block Kit for digest/actions pushes
-│   ├── commands.py                  ← inbound verb dispatcher (thin adapter)
-│   └── listener.py                  ← Socket Mode daemon (`--extra slack`)
-│
-├── memory/                          ← memory layer (docs/memory.md)
-│   └── manager.py                   ← MemoryManager: off | basic | mem0 modes
-│
-├── autopilot/                       ← continuous hunt: draft + deliver packs (ADR 0012)
-│   └── runner.py                    ← candidates -> pack -> Slack review card
-│
-├── notionsync/                      ← Notion job-hunt board mirror (ADR 0011)
-│   ├── client.py                    ← Notion REST via httpx (no SDK)
-│   └── sync.py                      ← page-per-job upsert + best-effort live push
-│
-├── artifacts/                       ← per-job resume/letter objects in MinIO (ADR 0014)
-│   └── store.py                     ← S3-compatible, presigned links, best-effort
-│
-├── orchestration/                   ← LangGraph hunt graph (ADR 0013)
-│   ├── graph.py                     ← ingest→qualify→autopilot→notion→report
-│   └── __main__.py                  ← --once | --loop | --show (mermaid)
-│
-├── ops/                             ← launchd plist templates (`make schedule`)
-│
-├── mcp_server/                      ← MCP interface (stdio) over the pipeline
-│   ├── server.py                    ← MCPServer `app` + 25 tools; thin adapter
-│   └── __main__.py                  ← `python -m mcp_server` / `make mcp`
-│
-├── docker-compose.yml               ← dedicated infra: pgvector Postgres (+ Ollama profile)
-│
-├── data/
-│   ├── resume.md                    ← Kelyn's resume (source of truth for LLM)
-│   ├── resume.md.example
-│   └── digest.html                  ← generated by `make digest`
-│
-├── drafts/                          ← generated cover letters + tailored bullets
-│
-├── tests/                           ← pytest suite (158+ tests, all deterministic)
-│   ├── conftest.py
-│   ├── test_{filters,roles,storage,qualification,agent,drafting,digest,discovery}.py
-│   ├── test_e2e_pipeline.py         ← mocked-HTTP end-to-end integration test
-│   └── test_mcp_server.py           ← every MCP tool via server.call_tool
-│
-└── docs/
-    ├── vision.md                    ← the "why" — positioning, personas, non-goals
-    ├── architecture.md              ← data flow + module boundaries + extension points
-    ├── roadmap.md                   ← what's next, prioritized, with acceptance criteria
-    ├── memory.md                    ← memory architecture: ledger, mem0, recall rules
-    ├── conventions.md               ← code style, testing patterns, PR checklist
-    ├── operations.md                ← env, cron, secrets rotation, monitoring
-    └── adrs/                        ← architecture decision records
+├── docker-compose.yml               ← dev infra (pgvector db :5433, minio :9010, ollama)
+├── data/                            ← resume.md (yours, gitignored) + .example
+├── drafts/                          ← generated packs (gitignored)
+├── tests/                           ← 192+ deterministic tests (no network, no clock)
+└── docs/                            ← vision · architecture · roadmap · memory ·
+      conventions · operations · adrs/ (0001-0015)
 ```
 
 ---
@@ -180,16 +115,16 @@ cp .env.example .env                           # fill DATABASE_URL, OPENROUTER_A
 cp data/resume.md.example data/resume.md       # edit it — this is YOU
 
 # Daily loop
-make daily                                     # ingest + qualify + digest
+karani hourly                                  # one full hunt pass
 open data/digest.html                          # or send it to yourself
 
 # Act on a suggestion
-python -m ingestion.cli draft 12345            # writes drafts/*.md
-python -m ingestion.cli status 12345 applied
-python -m ingestion.cli verdict 12345 apply    # feeds the taste-calibration loop
+karani draft 12345            # writes drafts/*.md
+karani status 12345 applied
+karani verdict 12345 apply    # feeds the taste-calibration loop
 
 # Or drive it all over MCP (Claude Code picks up .mcp.json automatically)
-make mcp                                       # python -m mcp_server (stdio)
+karani mcp                                     # MCP server (stdio)
 ```
 
 Full CLI reference is in `README.md`. Full command surface is in `Makefile`.
@@ -291,7 +226,9 @@ Full details in `docs/conventions.md`. The one-liners:
 
 ## 6. Testing conventions
 
-- Run: `make test` or `pytest tests -q`.
+- Run: `make test` or `uv run pytest tests -q`. CI runs the same
+  suite + ruff + a wheel smoke on 3.11/3.12/3.13, with coverage to
+  Coveralls (`.github/workflows/ci.yml`).
 - Every new module needs a smoke test at minimum.
 - All 158 existing tests are deterministic (no network, no clock). Keep it
   that way — use fake clients for LLM calls (see `tests/test_qualification.py`

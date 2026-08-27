@@ -30,7 +30,7 @@ def render_markdown(pkg: DraftPackage, job_row: dict) -> str:
 
     lines: list[str] = [
         f"# Application draft — {company} · {title}",
-        f"",
+        "",
         f"- **Apply:** {apply_url}" if apply_url else "",
         f"- **Job id:** {pkg.job_id}" if pkg.job_id else "",
         f"- **Verdict at draft:** {pkg.verdict_at_draft}",
@@ -76,7 +76,7 @@ def render_markdown(pkg: DraftPackage, job_row: dict) -> str:
                 "",
             ]
 
-    return "\n".join(l for l in lines if l is not None)
+    return "\n".join(line for line in lines if line is not None)
 
 
 def write_markdown(pkg: DraftPackage, job_row: dict,

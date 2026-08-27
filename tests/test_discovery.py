@@ -1,7 +1,7 @@
 """Discovery: slug candidate generation."""
 from __future__ import annotations
 
-from ingestion.discovery import slug_candidates
+from karani.ingestion.discovery import slug_candidates
 
 
 def test_slug_candidates_multiword():

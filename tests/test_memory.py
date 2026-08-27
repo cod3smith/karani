@@ -6,12 +6,12 @@ import json
 
 import pytest
 
-from ingestion.filters import pre_filter
-from ingestion.models import Job, RemoteStatus, Source
-from ingestion.profile import DEFAULT_PROFILE
-from ingestion.resume import ResumeProfile
-from ingestion.storage import Storage
-from memory import MemoryManager
+from karani.ingestion.filters import pre_filter
+from karani.ingestion.models import Job, RemoteStatus, Source
+from karani.ingestion.profile import DEFAULT_PROFILE
+from karani.ingestion.resume import ResumeProfile
+from karani.ingestion.storage import Storage
+from karani.memory import MemoryManager
 
 
 @pytest.fixture
@@ -157,7 +157,7 @@ class PromptCapturingLLM:
 
 @pytest.mark.asyncio
 async def test_qualify_injects_recalled_memories(storage):
-    from qualification.runner import qualify_pending
+    from karani.qualification.runner import qualify_pending
 
     job = Job(
         source=Source.GREENHOUSE, source_id="1",

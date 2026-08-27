@@ -18,8 +18,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ingestion.storage import Storage
-from qualification.client import QualifierClient
+from karani.ingestion.storage import Storage
+from karani.qualification.client import QualifierClient
 
 from .humanize import humanize_package, package_text, voice_report
 from .models import DraftPackage
@@ -49,18 +49,28 @@ class ApplicationPack:
 
 
 async def build_application_pack(
-    client: QualifierClient,
+    client: QualifierClient | None,
     storage: Storage,
     *,
     job_row: dict,
     resume_markdown: str,
     output_path: str | Path | None = None,
 ) -> ApplicationPack:
-    """Draft -> humanize -> tailor resume -> store. Records provenance."""
+    """Draft -> humanize -> tailor resume -> store. Records provenance.
+
+    `client=None` routes each stage through `[llm.<task>]` config
+    (draft/humanize/tailor may use different providers); an explicit
+    client is used for every stage (tests, provider overrides).
+    """
+    from karani.qualification import get_qualifier
+
+    def for_task(task: str) -> QualifierClient:
+        return client if client is not None else get_qualifier(task=task)
+
     job_id = int(job_row.get("id") or 0)
 
     pkg, path = await draft_for_job(
-        client, resume=resume_markdown, job_row=job_row,
+        for_task("draft"), resume=resume_markdown, job_row=job_row,
         qualification=job_row.get("qualification"),
         output_path=output_path,
     )
@@ -71,7 +81,7 @@ async def build_application_pack(
     # Humanize the prose; the detector arbitrates which version ships.
     if _flag("KARANI_HUMANIZE"):
         pack.pkg, pack.voice = await humanize_package(
-            client, pkg, voice_sample=resume_markdown,
+            for_task("humanize"), pkg, voice_sample=resume_markdown,
         )
         if pack.voice.get("kept") == "rewrite":
             path.write_text(  # rewrite the draft file with the human voice
@@ -85,7 +95,7 @@ async def build_application_pack(
     if _flag("KARANI_TAILOR_RESUME"):
         try:
             pack.resume, pack.resume_path = await tailor_resume(
-                client, resume=resume_markdown, job_row=job_row,
+                for_task("tailor"), resume=resume_markdown, job_row=job_row,
                 qualification=job_row.get("qualification"),
             )
         except Exception as exc:
@@ -93,7 +103,7 @@ async def build_application_pack(
                         job_id, exc)
 
     # Object storage (best-effort).
-    from artifacts import ArtifactStore
+    from karani.artifacts import ArtifactStore
     store = await ArtifactStore.create()
     if store is not None:
         files = {"cover_letter_pack.md": pack.draft_path.read_text()}

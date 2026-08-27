@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from .client import _extract_json
 from .models import QualificationResult
-from .prompts import AGENT_PROMPT_VERSION, AGENT_SYSTEM_PROMPT, build_user_prompt
+from .prompts import AGENT_PROMPT_VERSION, agent_system_prompt, build_user_prompt
 from .tools import ToolRegistry, default_registry
 
 log = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ async def qualify_one_agent(
         past_verdicts=past_verdicts, memories=memories,
     )
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": AGENT_SYSTEM_PROMPT},
+        {"role": "system", "content": agent_system_prompt()},
         {"role": "user", "content": user},
     ]
     run = AgentRunLog()

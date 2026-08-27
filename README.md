@@ -1,5 +1,11 @@
 # karani
 
+[![ci](https://github.com/cod3smith/karani/actions/workflows/ci.yml/badge.svg)](https://github.com/cod3smith/karani/actions/workflows/ci.yml)
+[![Coverage Status](https://coveralls.io/repos/github/cod3smith/karani/badge.svg?branch=main)](https://coveralls.io/github/cod3smith/karani?branch=main)
+[![PyPI](https://img.shields.io/pypi/v/karani)](https://pypi.org/project/karani/)
+[![Python](https://img.shields.io/pypi/pyversions/karani)](https://pypi.org/project/karani/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A semi-autonomous, self-hosted job-hunt pipeline. It ingests postings
 from nine sources every hour, qualifies them against *your* resume with
 an LLM, drafts a complete application pack (tailored resume + cover
@@ -13,7 +19,22 @@ Notion, MinIO, mem0 + pgvector semantic memory, local Ollama models, and
 LangGraph orchestration. Every intelligence feature reports to a
 conversion-funnel metric so improvements are measured, not vibed.
 
-- **Quickstart:** below. **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md).
+## Install
+
+```bash
+uv tool install karani     # or: pip install karani
+karani init                # interactive setup -> karani.toml
+karani config check        # see the resolved configuration
+karani hunt                # schedule the hourly hunt
+```
+
+Hunting different roles is a config edit, not a code edit: `karani.toml`
+owns what to hunt (roles, seniority, skills, comp shapes, relocation
+destinations, target companies, your positioning) and which LLM provider
+runs each task — API keys stay in `.env`. `karani refilter` re-judges
+stored roles after any change.
+
+- **Quickstart (from source):** below. **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md).
   **Planned work:** [docs/roadmap.md](docs/roadmap.md) (Tier 0 = good
   first issues). **Decisions:** `docs/adrs/`. **License:** MIT.
 - Drive it from any MCP client (25 tools), the CLI (21 verbs), or Slack.
@@ -30,7 +51,7 @@ Target roles: software engineering, research engineering, ML/AI. Computational-b
 - Hard gates: senior/staff engineering role, remote (not hybrid) *unless relocation is sponsored*, region-locked jobs vetoed *unless relocation is sponsored*, comp ≥ $160k where disclosed.
 - Nice-to-have: explicit pay parity language, relocation support, retreat/travel budget, must-have skill overlap.
 - Postings are scored 0–100 for ranking after they pass the hard gates.
-- Changed the rules? `python -m ingestion.cli refilter` re-judges every stored row.
+- Changed the rules? `karani refilter` re-judges every stored row.
 
 ## Sources
 
@@ -40,38 +61,13 @@ Target roles: software engineering, research engineering, ML/AI. Computational-b
 
 ## Layout
 
-```
-ingestion/
-├── models.py           # Job, PreFilterResult, RoleCategory, Seniority
-├── config.py           # thresholds, signals, env-driven DSN
-├── profile.py          # user profile (Kelyn: senior+, must-have skills)
-├── roles.py            # deterministic role + seniority classifier
-├── targets.py          # curated company list (pay parity / global hire tags)
-├── filters.py          # pre-filter (role → seniority → geo → remote → comp)
-├── base.py             # HTTP retry, per-host semaphores, shared helpers
-├── storage.py          # Postgres upsert + stale sweep
-├── orchestrator.py     # fetch → pre-filter → upsert → sweep, w/ observability
-├── cli.py              # run | qualify | digest | verdict | stats | sweep
-├── resume.py           # ResumeProfile loader (data/resume.md)
-├── greenhouse.py       # ATS fetchers
-├── lever.py
-├── ashby.py
-├── workable.py
-├── remoteok.py         # feed fetchers
-├── himalayas.py
-├── weworkremotely.py
-├── remotive.py
-└── aijobs.py
-
-qualification/          # LLM-tailored fit analysis against your resume
-├── models.py           # QualificationResult (pydantic)
-├── prompts.py          # versioned system+user prompt
-├── client.py           # Anthropic-backed qualifier + JSON extraction
-└── runner.py           # DB pending → LLM → DB write, concurrency-bounded
-
-data/
-└── resume.md           # your resume in markdown (see resume.md.example)
-```
+One installable package: `karani/` — `cli.py` (the `karani` command),
+`config/` (karani.toml), `karani/ingestion/` (deterministic tier),
+`karani/qualification/` (LLM tier + providers), `karani/drafting/` (pack factory:
+draft → humanize → tailor), `karani/intel/`, `karani/memory/`, `karani/slackbridge/`,
+`karani/notionsync/`, `karani/autopilot/`, `karani/orchestration/` (LangGraph),
+`karani/artifacts/` (MinIO), `karani/mcp_server/`. Full tree and rules: `CLAUDE.md`;
+decisions: `docs/adrs/0001-0015`.
 
 ## Pipeline stages
 
@@ -93,29 +89,29 @@ cp data/resume.md.example data/resume.md      # then edit it — this is YOU
 uv sync                                        # or pip install -e .
 
 # --- ingest + rank ---
-python -m ingestion.cli run                    # fetch + pre-filter + sweep + discover
-python -m ingestion.cli qualify --limit 50     # single-turn qualify
-python -m ingestion.cli qualify --agent --limit 5   # tool-using agent (top-tier only)
+karani run                    # fetch + pre-filter + sweep + discover
+karani qualify --limit 50     # single-turn qualify
+karani qualify --agent --limit 5   # tool-using agent (top-tier only)
 
 # --- act on the shortlist ---
-python -m ingestion.cli digest --format html --output data/digest.html
-python -m ingestion.cli draft 12345            # cover letter + bullets + Q&A → drafts/*.md
-python -m ingestion.cli verdict 12345 apply    # taste signal for future qualify runs
+karani digest --format html --output data/digest.html
+karani draft 12345            # cover letter + bullets + Q&A → drafts/*.md
+karani verdict 12345 apply    # taste signal for future qualify runs
 
 # --- application state machine ---
-python -m ingestion.cli status 12345 applied
-python -m ingestion.cli stage 12345 recruiter_screen --notes "30-min chat"
-python -m ingestion.cli outcome 12345 offer
+karani status 12345 applied
+karani stage 12345 recruiter_screen --notes "30-min chat"
+karani outcome 12345 offer
 
 # --- housekeeping ---
-python -m ingestion.cli discover               # probe unpromoted companies for ATS presence
-python -m ingestion.cli sweep --days 14
-python -m ingestion.cli stats
-python -m ingestion.cli actions                # what to do next: review/draft/submit/follow up
-python -m ingestion.cli funnel                 # response/interview/offer conversion rates
+karani discover               # probe unpromoted companies for ATS presence
+karani sweep --days 14
+karani stats
+karani actions                # what to do next: review/draft/submit/follow up
+karani funnel                 # response/interview/offer conversion rates
 ```
 
-Or use the Makefile — `make daily` chains `ingest + qualify + digest`.
+`karani hourly` runs one full LangGraph pass; `karani hunt` schedules it.
 
 Typical cron: `run` every 2–4h, `qualify` every 4–8h, `digest` in your morning brief.
 
@@ -128,7 +124,7 @@ Claude Code, Claude Desktop, Cowork — can drive the daily loop
 conversationally:
 
 ```bash
-make mcp            # or: python -m mcp_server
+karani mcp
 ```
 
 The repo ships a project-scoped `.mcp.json`, so Claude Code sessions opened
@@ -164,12 +160,12 @@ in-memory fallback for a scratch session). See
 One command schedules the whole loop:
 
 ```bash
-make hunt
+karani hunt
 ```
 
 **Every hour** (a LangGraph pass — ADR 0013 — with per-node retry and
 Slack alerts on failure; render the graph with
-`python -m orchestration --show`): ingest all sources → qualify the new arrivals (idempotent
+`karani hourly  # graph: see docs/adrs/0013`): ingest all sources → qualify the new arrivals (idempotent
 — already-qualified rows cost nothing) → **autopilot** drafts full
 application packs for new top-fit roles and posts each to Slack as a
 review card. Quiet by design: an hour with no new high-fit roles posts
@@ -192,16 +188,16 @@ submits an application — see ADR 0012.
 Buttons require one extra toggle on the Slack app: **Interactivity &
 Shortcuts → On** (no Request URL needed under Socket Mode).
 
-Run a single pass manually with `make autopilot`.
+Run a single pass manually with `karani autopilot`.
 
 ## Slack (two-way)
 
 Karani pushes to Slack and takes commands back — full design in ADR 0010.
 
 ```bash
-python -m ingestion.cli notify --kind digest    # push the shortlist
-python -m ingestion.cli notify --kind actions   # push the worklist
-make slack-listen                               # two-way bridge (Socket Mode)
+karani notify --kind digest    # push the shortlist
+karani notify --kind actions   # push the worklist
+karani slack        # two-way bridge (Socket Mode)
 ```
 
 In the channel/DM, reply with the same verbs the CLI has: `actions`,
@@ -245,8 +241,8 @@ source of truth):
 ```bash
 # one-time: create an internal integration at notion.so/my-integrations,
 # share a parent page with it, put NOTION_TOKEN in .env, then:
-python -m ingestion.cli notion init <parent_page_id>   # prints NOTION_DATABASE_ID
-python -m ingestion.cli notion sync                    # full reconcile any time
+karani notion init <parent_page_id>   # prints NOTION_DATABASE_ID
+karani notion sync                    # full reconcile any time
 ```
 
 Slack `sync` and the `notion_sync` MCP tool do the same reconcile.
@@ -254,8 +250,8 @@ Slack `sync` and the `notion_sync` MCP tool do the same reconcile.
 ## Scheduling
 
 ```bash
-make schedule      # launchd: make daily-full at 06:00 + 13:00, logs/daily-*.log
-make unschedule
+karani hunt        # launchd: karani hourly at 06:00 + 13:00, logs/daily-*.log
+karani unschedule
 ```
 
 `daily-full` = ingest → qualify → digest → Slack digest + actions push →
@@ -275,8 +271,8 @@ Ollama — zero token cost. Any mem0 failure degrades to the deterministic
 path; nothing is ever lost.
 
 ```bash
-python -m ingestion.cli remember "PostHog's screen asked about incident ownership" --kind question --company PostHog
-python -m ingestion.cli recall "PostHog interview" --limit 5
+karani remember "PostHog's screen asked about incident ownership" --kind question --company PostHog
+karani recall "PostHog interview" --limit 5
 ```
 
 ## Infrastructure
@@ -284,10 +280,10 @@ python -m ingestion.cli recall "PostHog interview" --limit 5
 Dedicated, disposable, local:
 
 ```bash
-make infra-up        # Postgres + pgvector on localhost:5433
-make infra-up-llm    # + Ollama on localhost:11434 (local LLM + memory extraction)
-make infra-psql      # shell into the DB
-make infra-down      # stop (volumes persist)
+karani infra up      # Postgres + pgvector on localhost:5433
+karani infra up --profile local-llm  # + Ollama on localhost:11434 (local LLM + memory extraction)
+docker exec -it karani-db psql -U karani  # shell into the DB
+karani infra down    # stop (volumes persist)
 ```
 
 Point `DATABASE_URL` at `postgresql://karani:karani@localhost:5433/karani`
@@ -301,9 +297,9 @@ The qualifier is provider-pluggable. Set once via env; override per-invocation w
 
 ```bash
 QUAL_PROVIDER=openrouter QUAL_MODEL=moonshotai/kimi-k2-thinking \
-  python -m ingestion.cli qualify --limit 20
+  karani qualify --limit 20
 # or one-shot:
-python -m ingestion.cli qualify --provider openrouter --model anthropic/claude-sonnet-4.5
+karani qualify --provider openrouter --model anthropic/claude-sonnet-4.5
 ```
 
 Uses only `httpx` — no extra SDK needed. Reasoning tokens count toward completion; the default `QUAL_MAX_TOKENS=8000` allows for it.
@@ -312,7 +308,7 @@ Uses only `httpx` — no extra SDK needed. Reasoning tokens count toward complet
 
 ```bash
 QUAL_PROVIDER=anthropic QUAL_MODEL=claude-haiku-4-5-20251001 \
-  python -m ingestion.cli qualify --limit 50
+  karani qualify --limit 50
 ```
 
 **Local (zero token cost).** Any OpenAI-compatible server — Ollama,
@@ -321,9 +317,9 @@ that support tool calling (qwen3, llama3.3):
 
 ```bash
 QUAL_PROVIDER=local LOCAL_LLM_MODEL=qwen3:32b \
-  python -m ingestion.cli qualify --limit 50
+  karani qualify --limit 50
 # mix and match: cheap local bulk qualification, strong hosted drafting
-python -m ingestion.cli draft 12345 --provider openrouter
+karani draft 12345 --provider openrouter
 ```
 
 Recommended split: local for bulk qualification (high volume, forgiving),
@@ -365,7 +361,7 @@ Edit `ingestion/profile.py` (skills, seniority), `ingestion/config.py`
 re-judge everything already stored:
 
 ```bash
-python -m ingestion.cli refilter   # re-runs the pre-filter over all active rows
+karani refilter   # re-runs the pre-filter over all active rows
 ```
 
 Newly-passing rows queue for the next qualify run automatically.

@@ -21,10 +21,10 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
-from ingestion.config import settings
-from ingestion.digest import render as render_digest
-from ingestion.resume import DEFAULT_RESUME_PATH, ResumeProfile
-from ingestion.storage import Storage
+from karani.ingestion.config import settings
+from karani.ingestion.digest import render as render_digest
+from karani.ingestion.resume import DEFAULT_RESUME_PATH, ResumeProfile
+from karani.ingestion.storage import Storage
 
 app = MCPServer(
     name="karani",
@@ -56,7 +56,7 @@ async def _get_memory():
     global _memory
     storage = await _get_storage()
     if _memory is None or _memory.storage is not storage:
-        from memory import MemoryManager
+        from karani.memory import MemoryManager
         _memory = MemoryManager(storage)
     return _memory
 
@@ -69,7 +69,7 @@ def use_storage(storage: Storage | None) -> None:
 
 
 def _make_qualifier(provider: str | None, model: str | None):
-    from qualification import get_qualifier
+    from karani.qualification import get_qualifier
     return get_qualifier(provider=provider, model=model)
 
 
@@ -114,7 +114,7 @@ async def ingest() -> dict:
     Network-heavy: hits every configured ATS board and feed. Returns run
     statistics including per-source outcomes and drop reasons.
     """
-    from ingestion.orchestrator import run as run_ingestion
+    from karani.ingestion.orchestrator import run as run_ingestion
 
     storage = await _get_storage()
     stats = await run_ingestion(storage)
@@ -148,7 +148,7 @@ async def discover(limit: int = 10) -> dict:
     (Greenhouse/Lever/Ashby/Workable) and promote hits for future ingest
     runs. Network-bound; requires Postgres (no-op on the in-memory
     fallback)."""
-    from ingestion.discovery import probe_unpromoted
+    from karani.ingestion.discovery import probe_unpromoted
 
     storage = await _get_storage()
     outcomes = await probe_unpromoted(storage, limit=limit)
@@ -177,7 +177,7 @@ async def qualify(
     Billed per row. `agent_mode=True` runs the tool-using agent loop
     (OpenRouter only) — much more expensive; use on top candidates only.
     """
-    from qualification import qualify_pending
+    from karani.qualification import qualify_pending
 
     resume = _load_resume(resume_path)
     client = _make_qualifier(provider, model)
@@ -306,7 +306,7 @@ async def draft(
     and artifact uploads to object storage with presigned tweak-and-
     submit links. Moves the job to `drafting`. Billed (up to three LLM
     calls; KARANI_HUMANIZE / KARANI_TAILOR_RESUME toggle the extras)."""
-    from drafting import build_application_pack
+    from karani.drafting import build_application_pack
 
     resume = _load_resume(resume_path)
     client = _make_qualifier(provider, model)
@@ -352,8 +352,8 @@ async def prep(
     analysis (with STAR answers from the resume), specific questions to
     ask grounded in company data, and warm-path openers. Writes
     drafts/prep_<id>_<company>.md. Billed (one LLM call)."""
-    from drafting import prep_for_job
-    from intel import dossier_text, get_company_intel
+    from karani.drafting import prep_for_job
+    from karani.intel import dossier_text, get_company_intel
 
     storage = await _get_storage()
     row = await storage.get_job(job_id)
@@ -390,9 +390,9 @@ async def draft_followup(
     Writes drafts/followup_<id>_<company>.md. Billed (one LLM call)."""
     from datetime import datetime, timezone
 
-    from drafting import followup_for_job
-    from ingestion.storage import _days_ago
-    from intel import dossier_text, get_company_intel
+    from karani.drafting import followup_for_job
+    from karani.ingestion.storage import _days_ago
+    from karani.intel import dossier_text, get_company_intel
 
     storage = await _get_storage()
     row = await storage.get_job(job_id)
@@ -414,7 +414,7 @@ async def company_intel(company: str, force_refresh: bool = False) -> dict:
     """Cached public-signal dossier for a company: background, engineering
     presence (GitHub), and warm-path candidates. TTL-refreshed (14 days);
     reused by prep, follow-up, and agent-mode qualification."""
-    from intel import dossier_text, get_company_intel as fetch_intel
+    from karani.intel import dossier_text, get_company_intel as fetch_intel
 
     storage = await _get_storage()
     intel = await fetch_intel(storage, company, force_refresh=force_refresh)
@@ -433,7 +433,7 @@ async def warm_paths(company: str) -> dict:
     presence (currently: public GitHub org members). Referrals and direct
     contact convert far better than cold portal applications; karani
     surfaces candidates, the user decides whom to contact."""
-    from intel import find_warm_paths
+    from karani.intel import find_warm_paths
 
     storage = await _get_storage()
     paths = await find_warm_paths(storage, company)
@@ -448,8 +448,8 @@ async def notify_slack(kind: str = "digest", limit: int = 10) -> dict:
     actions."""
     import os
 
-    from slackbridge import SlackClient, SlackError
-    from slackbridge.blocks import actions_blocks, digest_blocks
+    from karani.slackbridge import SlackClient, SlackError
+    from karani.slackbridge.blocks import actions_blocks, digest_blocks
 
     if kind not in ("digest", "actions"):
         raise ToolError("kind must be digest or actions")
@@ -486,9 +486,8 @@ async def autopilot(min_fit: int | None = None,
     default 85). Karani never submits — the human does."""
     import os
 
-    from autopilot import run_autopilot
-    from autopilot.runner import DEFAULT_MAX_DRAFTS, DEFAULT_MIN_FIT
-    from slackbridge import SlackClient, SlackError
+    from karani.autopilot import run_autopilot
+    from karani.slackbridge import SlackClient, SlackError
 
     channel = os.getenv("SLACK_CHANNEL", "")
     if not channel:
@@ -503,9 +502,8 @@ async def autopilot(min_fit: int | None = None,
         storage, slack=slack, channel=channel,
         make_qualifier=lambda: _make_qualifier(None, None),
         load_resume=lambda: _load_resume(None),
-        min_fit=min_fit if min_fit is not None else DEFAULT_MIN_FIT,
-        max_drafts=(max_drafts if max_drafts is not None
-                    else DEFAULT_MAX_DRAFTS),
+        min_fit=min_fit,
+        max_drafts=max_drafts,
     )
     return {"candidates": stats.candidates, "drafted": stats.drafted,
             "delivered": stats.delivered, "errors": stats.errors[:5]}
@@ -520,7 +518,7 @@ async def notion_sync() -> dict:
     notion init <parent_page_id>`)."""
     import os
 
-    from notionsync import NotionClient, NotionError, sync_jobs
+    from karani.notionsync import NotionClient, NotionError, sync_jobs
 
     database_id = os.getenv("NOTION_DATABASE_ID", "")
     if not database_id:
@@ -549,7 +547,7 @@ async def record_verdict(job_id: int, verdict: str) -> dict:
     if row:
         memory = await _get_memory()
         await memory.remember_verdict(row, verdict)
-    from notionsync import maybe_sync_job
+    from karani.notionsync import maybe_sync_job
     await maybe_sync_job(storage, job_id)
     return {"job_id": job_id, "user_verdict": verdict}
 
@@ -567,7 +565,7 @@ async def set_status(job_id: int, status: str,
                                              warm_path=warm_path)
     except ValueError as e:
         raise ToolError(str(e)) from e
-    from notionsync import maybe_sync_job
+    from karani.notionsync import maybe_sync_job
     await maybe_sync_job(storage, job_id)
     return {"job_id": job_id, "application_status": status,
             "warm_path": warm_path}
@@ -615,7 +613,7 @@ async def record_outcome(job_id: int, outcome: str) -> dict:
     if row:
         memory = await _get_memory()
         await memory.remember_outcome(row, outcome)
-    from notionsync import maybe_sync_job
+    from karani.notionsync import maybe_sync_job
     await maybe_sync_job(storage, job_id)
     return {"job_id": job_id, "outcome": outcome}
 

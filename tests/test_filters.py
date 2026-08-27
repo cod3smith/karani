@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from ingestion.config import settings
-from ingestion.filters import _find_signal, _parse_comp, pre_filter
-from ingestion.models import Job, RemoteStatus, RoleCategory, Seniority, Source
+from karani.ingestion.config import settings
+from karani.ingestion.filters import _find_signal, _parse_comp, pre_filter
+from karani.ingestion.models import Job, RemoteStatus, RoleCategory, Seniority, Source
 
 
 def _job(**overrides):
