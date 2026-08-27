@@ -11,7 +11,7 @@ LIMIT ?= 50
 DIGEST_LIMIT ?= 20
 DIGEST_OUT ?= data/digest.html
 
-.PHONY: help ingest qualify digest daily daily-digest daily-full daily-notify hourly agent discover status stats sweep \
+.PHONY: help ingest qualify digest daily daily-digest daily-full daily-notify hourly hourly-legacy agent discover status stats sweep \
         test mcp actions funnel notify slack-listen schedule unschedule hunt autopilot \
         infra-up infra-up-llm infra-down infra-logs infra-psql
 
@@ -46,12 +46,13 @@ daily: ingest qualify digest
 
 daily-digest: qualify digest
 
-# Hourly hunt: quiet unless there is something to deliver — autopilot
-# posts pack cards only when new high-fit roles exist, and it shares one
-# daily draft budget across all 24 runs (AUTOPILOT_MAX_DRAFTS_PER_DAY).
-# All post-qualify steps are best-effort: an unconfigured or briefly-down
-# channel must not sink the pipeline run.
-hourly: ingest qualify
+# Hourly hunt — one LangGraph pass (ADR 0013): ingest -> qualify ->
+# autopilot -> notion -> report, per-node retry, Slack alert on errors.
+# Falls back to the legacy make chain if langgraph isn't installed.
+hourly:
+	$(PY) -m orchestration --once || { [ $$? -eq 3 ] && $(MAKE) hourly-legacy PY="$(PY)"; }
+
+hourly-legacy: ingest qualify
 	-$(PY) -m ingestion.cli autopilot
 	-$(PY) -m ingestion.cli notion sync
 
