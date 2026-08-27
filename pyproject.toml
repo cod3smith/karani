@@ -19,8 +19,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.5"]
 anthropic = ["anthropic>=0.40"]
-memory = ["mem0ai>=0.1"]  # semantic memory index; basic mode needs nothing
+# Semantic index (pgvector via psycopg) + local extraction (ollama client);
+# basic mode needs none of this.
+memory = ["mem0ai>=0.1", "ollama>=0.3", "psycopg[binary,pool]>=3.1"]
 slack = ["slack-sdk>=3.27", "aiohttp>=3.9"]  # Socket Mode listener only; pushes use httpx
+orchestrator = ["langgraph>=0.2"]  # graph-structured background orchestration (ADR 0013)
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -38,5 +41,5 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = [
     "ingestion", "qualification", "drafting", "intel", "memory",
-    "slackbridge", "notionsync", "autopilot", "mcp_server",
+    "slackbridge", "notionsync", "autopilot", "orchestration", "mcp_server",
 ]
