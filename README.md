@@ -151,7 +151,9 @@ One command schedules the whole loop:
 make hunt
 ```
 
-**Every hour**: ingest all sources → qualify the new arrivals (idempotent
+**Every hour** (a LangGraph pass — ADR 0013 — with per-node retry and
+Slack alerts on failure; render the graph with
+`python -m orchestration --show`): ingest all sources → qualify the new arrivals (idempotent
 — already-qualified rows cost nothing) → **autopilot** drafts full
 application packs for new top-fit roles and posts each to Slack as a
 review card. Quiet by design: an hour with no new high-fit roles posts

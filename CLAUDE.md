@@ -127,7 +127,11 @@ karani/
 │   ├── client.py                    ← Notion REST via httpx (no SDK)
 │   └── sync.py                      ← page-per-job upsert + best-effort live push
 │
-├── ops/                             ← launchd plist template (`make schedule`)
+├── orchestration/                   ← LangGraph hunt graph (ADR 0013)
+│   ├── graph.py                     ← ingest→qualify→autopilot→notion→report
+│   └── __main__.py                  ← --once | --loop | --show (mermaid)
+│
+├── ops/                             ← launchd plist templates (`make schedule`)
 │
 ├── mcp_server/                      ← MCP interface (stdio) over the pipeline
 │   ├── server.py                    ← MCPServer `app` + 25 tools; thin adapter

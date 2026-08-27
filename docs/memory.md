@@ -52,9 +52,14 @@ conflict resolution, and embedding into **pgvector in the same Postgres**
 fast do handbook-first companies respond?" finds the GitLab fact without
 sharing a keyword.
 
-mem0's LLM and embedder default to local Ollama (`qwen3:32b` +
-`nomic-embed-text` — see `docker-compose.yml`), so memory extraction costs
-zero tokens. Every knob is env-overridable (`MEM0_*` in `.env.example`).
+mem0's LLM and embedder default to local Ollama (`llama3.2:3b` +
+`nomic-embed-text`, 768 dims — extraction is a small-model task), so
+memory costs zero tokens. The vector store reads `MEM0_PG_URL`
+(default: the compose Postgres on :5433) — deliberately separate from
+`DATABASE_URL`, so the ledger can live in Neon while the disposable
+index stays local. Every knob is env-overridable (`MEM0_*` in
+`.env.example`); rebuild the index any time with
+`python -m ingestion.cli reindex`.
 
 Failure policy: any mem0 error (extra not installed, Ollama down, vector
 store unreachable) logs a warning and degrades to `basic` — writes still
