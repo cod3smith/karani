@@ -38,7 +38,11 @@ log = logging.getLogger(__name__)
 
 DEFAULT_MODEL = os.getenv("QUAL_MODEL", "moonshotai/kimi-k2-thinking")
 DEFAULT_EFFORT = os.getenv("QUAL_REASONING_EFFORT", "high")  # low | medium | high
-DEFAULT_MAX_TOKENS = int(os.getenv("QUAL_MAX_TOKENS", "8000"))
+# Reasoning tokens count toward the completion cap on OpenRouter, and a
+# full draft package (letter + bullets + answers) plus high-effort
+# reasoning does not fit in 8k — truncated JSON was the observed failure.
+# The cap is a ceiling, not a cost; unused headroom bills nothing.
+DEFAULT_MAX_TOKENS = int(os.getenv("QUAL_MAX_TOKENS", "16000"))
 DEFAULT_TIMEOUT = int(os.getenv("QUAL_TIMEOUT_SECONDS", "180"))
 
 # OpenRouter recommends these headers for attribution / rate-limit tier.
@@ -146,6 +150,13 @@ class OpenRouterQualifier:
             choice = data["choices"][0]
             message = choice["message"]
             usage = data.get("usage") or {}
+            if choice.get("finish_reason") == "length":
+                log.warning(
+                    "output TRUNCATED at max_tokens=%d (completion_tokens=%s)"
+                    " — downstream JSON parsing will likely fail; raise "
+                    "QUAL_MAX_TOKENS", self._max_tokens,
+                    usage.get("completion_tokens"),
+                )
             if self._include_reasoning and message.get("reasoning"):
                 log.info(
                     "openrouter reasoning tokens=%s completion=%s prompt=%s",

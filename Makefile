@@ -11,8 +11,9 @@ LIMIT ?= 50
 DIGEST_LIMIT ?= 20
 DIGEST_OUT ?= data/digest.html
 
-.PHONY: help ingest qualify digest daily agent discover status stats sweep test mcp actions funnel \
-        notify slack-listen infra-up infra-up-llm infra-down infra-logs infra-psql
+.PHONY: help ingest qualify digest daily daily-digest daily-full daily-notify hourly agent discover status stats sweep \
+        test mcp actions funnel notify slack-listen schedule unschedule hunt autopilot \
+        infra-up infra-up-llm infra-down infra-logs infra-psql
 
 help:
 	@echo "targets:"
@@ -44,6 +45,36 @@ digest:
 daily: ingest qualify digest
 
 daily-digest: qualify digest
+
+# Hourly hunt: quiet unless there is something to deliver — autopilot
+# posts pack cards only when new high-fit roles exist, and it shares one
+# daily draft budget across all 24 runs (AUTOPILOT_MAX_DRAFTS_PER_DAY).
+# All post-qualify steps are best-effort: an unconfigured or briefly-down
+# channel must not sink the pipeline run.
+hourly: ingest qualify
+	-$(PY) -m ingestion.cli autopilot
+	-$(PY) -m ingestion.cli notion sync
+
+# Twice-daily summary pushes (digest + worklist) — deliberately NOT
+# hourly; that would be spam.
+daily-notify:
+	-$(PY) -m ingestion.cli digest --limit 20 --format html --output data/digest.html
+	-$(PY) -m ingestion.cli notify --kind digest
+	-$(PY) -m ingestion.cli notify --kind actions
+
+# One-shot full chain for manual runs.
+daily-full: ingest qualify digest
+	-$(PY) -m ingestion.cli autopilot
+	-$(PY) -m ingestion.cli notify --kind digest
+	-$(PY) -m ingestion.cli notify --kind actions
+	-$(PY) -m ingestion.cli notion sync
+
+autopilot:
+	$(PY) -m ingestion.cli autopilot
+
+# THE command: schedule the continuous hunt — hourly ingest -> qualify ->
+# autopilot packs to Slack -> Notion board, plus twice-daily summaries.
+hunt: schedule
 
 discover:
 	$(PY) -m ingestion.cli discover --limit 10
@@ -88,3 +119,26 @@ infra-logs:
 
 infra-psql:
 	docker exec -it karani-db psql -U karani -d karani
+
+# --- scheduling (macOS launchd) ---
+
+PLIST_DAILY := $(HOME)/Library/LaunchAgents/com.karani.daily.plist
+PLIST_HOURLY := $(HOME)/Library/LaunchAgents/com.karani.hourly.plist
+
+schedule:
+	mkdir -p logs $(HOME)/Library/LaunchAgents
+	sed "s|__REPO__|$(CURDIR)|g" ops/karani.hourly.plist.template > $(PLIST_HOURLY)
+	sed "s|__REPO__|$(CURDIR)|g" ops/karani.daily.plist.template > $(PLIST_DAILY)
+	-launchctl unload $(PLIST_HOURLY) 2>/dev/null
+	-launchctl unload $(PLIST_DAILY) 2>/dev/null
+	launchctl load -w $(PLIST_HOURLY)
+	launchctl load -w $(PLIST_DAILY)
+	@echo "scheduled: com.karani.hourly (every hour, logs/hourly-*.log)"
+	@echo "           com.karani.daily  (06:00 + 13:00 summaries, logs/daily-*.log)"
+	@echo "run one now to verify: launchctl start com.karani.hourly"
+
+unschedule:
+	-launchctl unload -w $(PLIST_HOURLY) 2>/dev/null
+	-launchctl unload -w $(PLIST_DAILY) 2>/dev/null
+	rm -f $(PLIST_HOURLY) $(PLIST_DAILY)
+	@echo "unscheduled"

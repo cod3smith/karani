@@ -111,3 +111,64 @@ def test_prefilter_drops_low_comp_when_disclosed():
     ))
     assert not pf.pass_hard_filters
     assert any("below" in r for r in pf.reasons_failed)
+
+
+# --- Relocation thesis (config.relocation_signals; prompts qual-v3) ---
+
+def test_relocation_softens_region_lock():
+    pf = pre_filter(_job(description_text=(
+        "Must be based in Berlin. We offer visa sponsorship and a "
+        "relocation package. Python. Salary: EUR salary 90,000 - 120,000."
+    ), remote_status=RemoteStatus.UNKNOWN))
+    assert pf.relocation_support == "likely_yes"
+    assert pf.global_hire_eligible == "unclear"  # LLM decides, no veto
+    assert not any("regional restriction" in r for r in pf.reasons_failed)
+
+
+def test_relocation_softens_onsite_and_hybrid():
+    onsite = pre_filter(_job(
+        remote_status=RemoteStatus.ONSITE,
+        description_text=("Onsite in Tokyo. Visa sponsorship and relocation "
+                          "assistance provided. Python. Salary: $180,000+."),
+    ))
+    assert onsite.pass_hard_filters
+    assert onsite.relocation_support == "likely_yes"
+
+    hybrid = pre_filter(_job(
+        remote_status=RemoteStatus.HYBRID,
+        description_text=("Hybrid in Amsterdam. Relocation package offered. "
+                          "Python. Salary: $170,000+."),
+    ))
+    assert hybrid.pass_hard_filters
+
+
+def test_region_lock_without_relocation_still_drops():
+    pf = pre_filter(_job(
+        description_text="US only. Python. Salary $200,000+.",
+    ))
+    assert not pf.pass_hard_filters
+    assert pf.relocation_support == "unclear"
+
+
+def test_relocation_boosts_score():
+    base = pre_filter(_job())
+    reloc = pre_filter(_job(description_text=(
+        "Python and Go. Salary: $200,000 - $250,000. "
+        "Same pay regardless of location. Annual retreat. Hire globally. "
+        "Relocation support available."
+    )))
+    assert reloc.score == base.score + 10
+
+
+def test_comp_bio_titles_excluded():
+    for title in ("Senior Computational Biologist",
+                  "Bioinformatics Engineer",
+                  "Machine Learning Engineer, Genomics"):
+        pf = pre_filter(_job(title=title))
+        assert not pf.pass_hard_filters, title
+        assert any("excluded term" in r for r in pf.reasons_failed), title
+    # Plain ML/SWE/research titles still pass.
+    for title in ("Senior Machine Learning Engineer",
+                  "Research Engineer",
+                  "Senior Software Engineer"):
+        assert pre_filter(_job(title=title)).pass_hard_filters, title

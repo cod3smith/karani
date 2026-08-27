@@ -34,26 +34,49 @@ class RetryableLLMError(Exception):
 
 _THINK_TAG = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 _REASONING_TAG = re.compile(r"<reasoning>.*?</reasoning>", re.DOTALL | re.IGNORECASE)
-_JSON_FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
 
 def _extract_json(text: str) -> dict:
+    """Pull the intended JSON object out of arbitrary model output.
+
+    Thinking models emit reasoning prose around (and containing) braces,
+    so naive first-brace or non-greedy-fence extraction can grab a nested
+    fragment — e.g. a single tailored_bullet object — and "succeed" with
+    the wrong payload. Strategy: try every '{' as a decode start with
+    raw_decode (which tolerates trailing text) and return the decoded
+    dict with the MOST keys — the full payload always beats any of its
+    own sub-objects.
+    """
     text = text.strip()
     # Strip inline reasoning traces some thinking models emit.
     text = _THINK_TAG.sub("", text)
     text = _REASONING_TAG.sub("", text)
     text = text.strip()
 
-    # Prefer fenced JSON if present — most reliable.
-    m = _JSON_FENCE.search(text)
-    if m:
-        return json.loads(m.group(1))
+    # Fast path: the whole thing is JSON.
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
 
-    # Otherwise trim to the first `{` (drops "Here is the JSON:" prefixes).
-    first_brace = text.find("{")
-    if first_brace > 0:
-        text = text[first_brace:]
-    return json.loads(text)
+    decoder = json.JSONDecoder()
+    best: dict | None = None
+    idx = text.find("{")
+    while idx != -1:
+        try:
+            candidate, _ = decoder.raw_decode(text, idx)
+            if isinstance(candidate, dict) and (
+                best is None or len(candidate) > len(best)
+            ):
+                best = candidate
+        except json.JSONDecodeError:
+            pass
+        idx = text.find("{", idx + 1)
+    if best is None:
+        raise json.JSONDecodeError("no JSON object found", text[:200], 0)
+    return best
 
 
 # --- Public helper the runner calls ---

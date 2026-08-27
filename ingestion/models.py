@@ -164,6 +164,11 @@ class PreFilterResult(BaseModel):
     pay_parity: Literal["likely_yes", "unclear"] = "unclear"
     pay_parity_evidence: str = ""
 
+    # Relocation/visa sponsorship — softens geo and onsite vetos (EU and
+    # Japan destinations especially attractive)
+    relocation_support: Literal["likely_yes", "unclear"] = "unclear"
+    relocation_evidence: str = ""
+
     # Culture (nice-to-have; never vetos)
     travel_benefits: Literal["likely_yes", "likely_no", "unclear"] = "unclear"
     travel_evidence: str = ""

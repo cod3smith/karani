@@ -63,6 +63,19 @@ class Settings:
         "eligible to work in the united states", "eligible to work in the us",
         "us employment authorization", "authorized to work in the united states",
     )
+    # Relocation/visa sponsorship SOFTENS geo and onsite vetos: a
+    # region-locked or onsite role that relocates the candidate (EU and
+    # Japan especially attractive) is worth LLM review, not a hard drop.
+    relocation_signals: tuple[str, ...] = (
+        "visa sponsorship", "sponsor visas", "sponsors visas",
+        "sponsor your visa", "sponsor work visas", "visa support",
+        "sponsorship available", "visa sponsorship available",
+        "relocation package", "relocation assistance", "relocation support",
+        "relocation budget", "relocation bonus", "relocation offered",
+        "we offer relocation", "help you relocate", "assist with relocation",
+        "immigration support", "work permit sponsorship",
+        "visa and relocation", "relocation and visa",
+    )
     # Location-independent pay = the single strongest positive signal.
     # If we see this, we know the SF-band thesis holds regardless of location.
     pay_parity_signals: tuple[str, ...] = (
@@ -111,6 +124,11 @@ class Settings:
         "finance", "accountant", "controller", "paralegal", "legal counsel",
         "operations manager", "office manager", "executive assistant",
         "customer support", "support engineer",  # customer support, not eng
+        # Computational-bio adjacency: Kelyn wants SWE / research eng / ML,
+        # not wet-lab-adjacent or comp-bio roles.
+        "computational biology", "computational biologist", "bioinformatics",
+        "biologist", "genomics", "proteomics", "cheminformatics",
+        "medicinal chemist", "chemistry",
     )
 
     # --- HTTP ---

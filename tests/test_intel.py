@@ -59,12 +59,13 @@ async def test_intel_ttl_expiry_reprobes(fake_probes):
 
 
 @pytest.mark.asyncio
-async def test_find_warm_paths(fake_probes):
+async def test_find_warm_paths_scored(fake_probes):
     storage = Storage("")
     await storage.connect()
     paths = await svc.find_warm_paths(storage, "GitLab")
-    assert paths == [{"login": "alice", "url": "https://github.com/alice",
-                      "source": "github_org_member"}]
+    assert paths[0]["login"] == "alice"
+    assert paths[0]["warm_score"] == 0  # fixture member has no bio text
+    assert paths[0]["overlap_terms"] == []
 
 
 def test_dossier_text_renders_sections():
@@ -83,3 +84,53 @@ def test_dossier_text_renders_sections():
 def test_org_slug():
     assert svc._org_slug("Hugging Face") == "hugging-face"
     assert svc._org_slug("GitLab") == "gitlab"
+
+
+def test_score_candidates_ranks_by_domain_overlap():
+    candidates = [
+        {"login": "zed", "url": "u1", "bio": "Frontend design systems"},
+        {"login": "amy", "url": "u2",
+         "bio": "Data platform engineer: Python, Kafka, machine learning"},
+        {"login": "bob", "url": "u3", "bio": "Python tooling"},
+    ]
+    ranked = svc.score_candidates(
+        candidates, interest_terms=("python", "kafka", "machine learning"))
+    assert [c["login"] for c in ranked] == ["amy", "bob", "zed"]
+    assert ranked[0]["warm_score"] == 3
+    assert set(ranked[0]["overlap_terms"]) == {"python", "kafka",
+                                               "machine learning"}
+    assert ranked[2]["warm_score"] == 0
+    # Word-boundary: "go" must not match "algorithms".
+    none = svc.score_candidates(
+        [{"login": "x", "url": "u", "bio": "algorithms"}],
+        interest_terms=("go",))
+    assert none[0]["warm_score"] == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_warm_candidates_enriches_profiles(monkeypatch):
+    from types import SimpleNamespace
+
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "public_members" in str(request.url):
+            return httpx.Response(200, json=[
+                {"login": "amy", "html_url": "https://github.com/amy"},
+            ])
+        if str(request.url).endswith("/users/amy"):
+            return httpx.Response(200, json={
+                "name": "Amy A", "bio": "Kafka pipelines", "blog": "amy.dev",
+            })
+        return httpx.Response(404)
+
+    real = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        svc, "httpx",
+        SimpleNamespace(AsyncClient=lambda **kw: real(transport=transport, **kw)),
+    )
+    out = await svc._fetch_warm_candidates("Acme")
+    assert out == [{"login": "amy", "url": "https://github.com/amy",
+                    "source": "github_org_member", "name": "Amy A",
+                    "bio": "Kafka pipelines", "blog": "amy.dev"}]

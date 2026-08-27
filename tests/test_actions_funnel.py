@@ -147,6 +147,69 @@ async def test_funnel_stats_rates_and_splits():
 
 
 @pytest.mark.asyncio
+async def test_funnel_warm_vs_cold_and_posting_age():
+    storage = Storage("")
+    await storage.connect()
+    # Warm application to a fresh posting -> responded.
+    await _seed(storage, "1", application_status="screen",
+                applied_at=NOW - timedelta(days=1),
+                posted_at=NOW - timedelta(days=2),
+                warm_path_used=True)
+    # Cold application to a stale posting -> silence.
+    await _seed(storage, "2", application_status="applied",
+                applied_at=NOW,
+                posted_at=NOW - timedelta(days=20),
+                warm_path_used=False)
+    # Unmarked application, posting date unknown.
+    await _seed(storage, "3", application_status="applied", applied_at=NOW,
+                posted_at=None)
+
+    f = await storage.funnel_stats()
+    assert f["by_warm_path"]["warm"] == {
+        "applied": 1, "responded": 1, "response_rate": 1.0}
+    assert f["by_warm_path"]["cold"]["response_rate"] == 0.0
+    assert f["by_warm_path"]["unmarked"]["applied"] == 1
+    # posted 2d before applying -> 0-3d band; 20d -> 15d+.
+    assert f["by_posting_age"]["0-3d"]["responded"] == 1
+    assert f["by_posting_age"]["15d+"]["applied"] == 1
+    assert f["by_posting_age"]["0-3d"]["applied"] == 1
+    assert f["by_posting_age"]["unknown"]["applied"] == 1
+
+
+@pytest.mark.asyncio
+async def test_set_status_warm_flag_roundtrip():
+    storage = Storage("")
+    await storage.connect()
+    job_id = await _seed(storage, "1")
+    await storage.set_application_status(job_id, "applied", warm_path=True)
+    assert (await storage.get_job(job_id))["warm_path_used"] is True
+    # None leaves the flag untouched on later transitions.
+    await storage.set_application_status(job_id, "screen")
+    assert (await storage.get_job(job_id))["warm_path_used"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_prefilter_roundtrip():
+    """`refilter` support: re-judged rows persist the new verdict."""
+    from ingestion.filters import pre_filter as pf_run
+    storage = Storage("")
+    await storage.connect()
+    job_id = await _seed(storage, "1")
+    row = (await storage.active_jobs())[0]
+    assert row["id"] == job_id
+
+    # Re-judge with a bio title: the row must flip to failing.
+    bio = _job("1")
+    bio.title = "Senior Computational Biologist"
+    result = pf_run(bio)
+    assert not result.pass_hard_filters
+    await storage.update_prefilter(job_id, result)
+    updated = await storage.get_job(job_id)
+    assert updated["prefilter_passed"] is False
+    assert updated["prefilter_score"] == result.score
+
+
+@pytest.mark.asyncio
 async def test_record_draft_persists_provenance():
     storage = Storage("")
     await storage.connect()

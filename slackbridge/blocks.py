@@ -37,6 +37,52 @@ def digest_blocks(rows: list[dict], *, limit: int = 10) -> list[dict]:
     return blocks
 
 
+def _button(action_id: str, text: str, value: str,
+            style: str | None = None) -> dict:
+    b: dict = {"type": "button", "action_id": action_id, "value": value,
+               "text": {"type": "plain_text", "text": text}}
+    if style:
+        b["style"] = style
+    return b
+
+
+def pack_blocks(job_row: dict, pkg) -> list[dict]:
+    """An application pack for review: summary, cover letter, and the
+    review buttons. Karani drafts; the buttons drive Kelyn's flow — the
+    actual submission always happens on the company portal (non-goal:
+    never auto-submit)."""
+    job_id = job_row.get("id")
+    company = job_row.get("company_display") or job_row.get("company") or ""
+    letter = (pkg.cover_letter or "").strip()
+    if len(letter) > 2600:
+        letter = letter[:2600] + "\n[truncated — full text in the draft file]"
+    coverage = (f" · keyword coverage {pkg.keyword_coverage:.0%}"
+                if pkg.keyword_coverage is not None else "")
+    return [
+        _header(f"Application pack — {company}"),
+        _section(
+            f"*[{job_id}]* {company} — {job_row.get('title', '')}\n"
+            f"fit *{job_row.get('fit_score', '?')}* · {_comp(job_row)}"
+            f"{coverage} · <{job_row.get('apply_url')}|posting>\n"
+            f"{len(pkg.tailored_bullets)} tailored bullets · "
+            f"{len(pkg.application_answers)} answers in the draft file"
+        ),
+        _section(f"*Cover letter:*\n>>> {letter}"),
+        {
+            "type": "actions",
+            "block_id": f"pack:{job_id}",
+            "elements": [
+                _button("pack_approve", "Approve pack", str(job_id),
+                        style="primary"),
+                _button("pack_skip", "Skip role", str(job_id),
+                        style="danger"),
+                _button("pack_applied_warm", "I applied (warm)", str(job_id)),
+                _button("pack_applied_cold", "I applied (cold)", str(job_id)),
+            ],
+        },
+    ]
+
+
 def actions_blocks(buckets: dict) -> list[dict]:
     blocks = [_header("karani — next actions")]
     labels = [

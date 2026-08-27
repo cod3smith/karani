@@ -74,15 +74,18 @@ TARGETS: list[Target] = [
     Target(Source.ASHBY, "mistral", "Mistral", False, False,
            "EU"),
 
-    # --- Tier 4: bio / AI-for-bio ---
-    Target(Source.GREENHOUSE, "recursion", "Recursion", False, False,
-           "Mostly US"),
-    Target(Source.GREENHOUSE, "insitro", "Insitro", False, False,
-           "US"),
-    Target(Source.ASHBY, "isomorphiclabs", "Isomorphic Labs", False, False,
-           "UK/US"),
-    Target(Source.GREENHOUSE, "genesistx", "Genesis Therapeutics", False,
-           False, "US"),
+    # --- Tier 4: EU / Japan companies known to sponsor relocation ---
+    # (Kelyn accepts relocation with visa sponsorship; EU and Japan are
+    # the preferred destinations. Comp-bio companies removed 2026-08 —
+    # target roles are SWE / research engineer / ML.)
+    Target(Source.LEVER, "spotify", "Spotify", False, False,
+           "EU, relocates to Stockholm"),
+    Target(Source.GREENHOUSE, "datadog", "Datadog", False, False,
+           "Paris/EU eng hubs, sponsors"),
+    Target(Source.GREENHOUSE, "mercari", "Mercari", False, False,
+           "Tokyo, strong relocation program"),
+    Target(Source.GREENHOUSE, "wise", "Wise", False, False,
+           "London/Tallinn, sponsors visas"),
 
     # --- Tier 5: Africa-native scale-ups (regional pay, keep for optionality) ---
     Target(Source.GREENHOUSE, "flutterwave", "Flutterwave", True, False,

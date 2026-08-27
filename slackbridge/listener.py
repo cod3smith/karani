@@ -23,6 +23,7 @@ from memory import MemoryManager
 
 from .client import SlackClient
 from .commands import handle_command
+from .interactions import handle_interaction
 
 log = logging.getLogger(__name__)
 
@@ -71,8 +72,24 @@ async def run_listener() -> None:
         ) from exc
 
     app_token = os.getenv("SLACK_APP_TOKEN", "")
+    bot_token = os.getenv("SLACK_BOT_TOKEN", "")
+    # Fail fast on token-type mix-ups: apps.connections.open only accepts
+    # app-level tokens, and slack-sdk's error for the wrong type is a
+    # confusing retry loop ('not_allowed_token_type').
     if not app_token:
         raise RuntimeError("SLACK_APP_TOKEN not set (xapp-..., Socket Mode).")
+    if not app_token.startswith("xapp-"):
+        raise RuntimeError(
+            "SLACK_APP_TOKEN must be an app-level token (xapp-...) with the "
+            "connections:write scope — generate one under Basic Information "
+            "-> App-Level Tokens. It looks like a different token type is "
+            "set (bot tokens start with xoxb-)."
+        )
+    if not bot_token.startswith("xoxb-"):
+        raise RuntimeError(
+            "SLACK_BOT_TOKEN must be a Bot User OAuth Token (xoxb-...) — "
+            "copy it from OAuth & Permissions after installing the app."
+        )
 
     storage = Storage(settings.database_url)
     await storage.connect()
@@ -92,14 +109,25 @@ async def run_listener() -> None:
         await client.send_socket_mode_response(
             SocketModeResponse(envelope_id=req.envelope_id)
         )
-        if req.type != "events_api":
-            return
-        event = (req.payload or {}).get("event") or {}
         try:
-            await handle_event(event, storage=storage, memory=memory,
-                               slack=slack, channel_filter=channel_filter)
+            if req.type == "events_api":
+                event = (req.payload or {}).get("event") or {}
+                await handle_event(event, storage=storage, memory=memory,
+                                   slack=slack,
+                                   channel_filter=channel_filter)
+            elif req.type == "interactive":
+                # Pack review buttons (ADR 0012). Reply in the pack's
+                # thread so the card and its resolution stay together.
+                payload = req.payload or {}
+                reply = await handle_interaction(payload, storage=storage,
+                                                 memory=memory)
+                if reply:
+                    chan = (payload.get("channel") or {}).get("id", "")
+                    ts = (payload.get("message") or {}).get("ts")
+                    if chan:
+                        await slack.post_message(chan, reply, thread_ts=ts)
         except Exception:
-            log.exception("slack event handling failed")
+            log.exception("slack request handling failed (%s)", req.type)
 
     sm_client.socket_mode_request_listeners.append(_on_request)
     await sm_client.connect()

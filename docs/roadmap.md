@@ -20,7 +20,16 @@ Treat as leaked.
 
 **Effort:** 10 minutes.
 
-### 1.2 Schedule daily runs
+### 1.2 Schedule daily runs — SHIPPED (2026-08)
+
+Shipped: `make hunt` (alias `make schedule`) installs two launchd
+agents: com.karani.hourly (every hour: ingest -> qualify -> autopilot
+packs -> Notion sync; quiet when nothing is new) and com.karani.daily
+(06:00 + 13:00 digest + worklist pushes). Autopilot spend is bounded by
+a shared daily budget (`AUTOPILOT_MAX_DRAFTS_PER_DAY`) so hourly runs
+cannot multiply cost. Logs: `logs/hourly-*.log`, `logs/daily-*.log`.
+Push/sync steps are best-effort so unconfigured channels never sink the
+run. `make unschedule` removes both.
 
 **Motivation:** `make daily` exists but nothing invokes it.
 
@@ -74,13 +83,17 @@ Buckets: review (fit + freshness ranked), to_draft, to_submit, follow_up
 (applied >= N days, no response). An orchestrating agent's loop is now
 "call next_actions, act, repeat".
 
-### 1.5.3 Warm-path finder — PARTIAL (2026-08)
+### 1.5.3 Warm-path finder — SHIPPED (2026-08)
 
-Shipped: `intel/` dossiers surface public GitHub org members as warm-path
-candidates (`warm_paths` MCP tool, `warm` Slack command), and prep packs
-draft an opener per contact. Open: overlap-scoring against Kelyn's
-domains, blog-author and conference-talk sources, and the warm-vs-cold
-split in `funnel_stats`.
+Shipped: `intel/` dossiers cache public GitHub org members with enriched
+profiles (name/bio/blog); `find_warm_paths` overlap-scores them against
+the user's skill vocabulary at read time (`warm_score` + matched terms,
+best first) and prep packs draft an opener per contact. Applications are
+marked warm/cold at `status ... applied` time (CLI `--warm/--cold`,
+Slack `status <id> applied warm`, MCP `set_status(warm_path=...)`) and
+`funnel_stats.by_warm_path` carries the split. Deliberately out:
+blog-author and conference-talk scraping — too fragile to ship silently;
+revisit if GitHub coverage proves thin in practice.
 
 **Motivation:** referrals/direct contact convert 5–10x better than portal
 submissions. Biggest single lever on response rate.
@@ -101,8 +114,9 @@ warm contact + note; `funnel_stats` gains a warm-vs-cold response split.
 ### 1.5.4 Freshness urgency — SHIPPED (2026-08)
 
 Shipped: `fast_lane` flag on `next_actions` review items (fit >= 85,
-posted <= 3 days), surfaced in the Slack actions push. Open: response
-rate by posting-age split.
+posted <= 3 days), surfaced in the Slack actions push, and
+`funnel_stats.by_posting_age` (0-3d / 4-7d / 8-14d / 15d+) measuring
+response rate by posting age at application time.
 
 **Motivation:** response odds decay hard with posting age; recruiters
 triage the first days of applicants.
@@ -144,8 +158,9 @@ correlate coverage vs response rate.
 Shipped: `prep` (CLI/MCP/Slack) — company brief from the cached
 `company_intel` dossier, gap-derived likely questions with STAR answers,
 dossier-grounded questions to ask, warm openers. Question bank grows via
-`remember ... --kind question`; prep recalls it per company. Open:
-structured post-stage capture prompts.
+`asked <id> "<question>"` (CLI/Slack) or `record_question` (MCP) —
+the `stage` verbs nudge toward it after every logged stage; prep recalls
+the bank per company.
 
 **Motivation:** once response rate rises, screen → onsite conversion is
 the next bottleneck. The qualifier's evidence-backed `gaps` are exactly

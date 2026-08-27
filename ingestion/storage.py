@@ -103,6 +103,9 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS draft_path TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS draft_prompt_version TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS draft_model TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS draft_keyword_coverage REAL;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS warm_path_used BOOLEAN;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS notion_page_id TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS drafted_at TIMESTAMPTZ;
 
 -- Company intelligence cache — dossiers built from public probes (GitHub,
 -- Wikipedia, engineering blog). TTL-refreshed; consumed by agent-mode
@@ -361,6 +364,25 @@ _RESPONDED_STATUSES = frozenset({"screen", "interview", "offer", "rejected",
 _RESPONDED_OUTCOMES = frozenset({"offer", "rejection", "declined"})
 
 
+def _posting_age_band(row: dict) -> str:
+    """Posting age at application time — the freshness-urgency split."""
+    posted, applied = row.get("posted_at"), row.get("applied_at")
+    if not isinstance(posted, datetime) or not isinstance(applied, datetime):
+        return "unknown"
+    if posted.tzinfo is None:
+        posted = posted.replace(tzinfo=timezone.utc)
+    if applied.tzinfo is None:
+        applied = applied.replace(tzinfo=timezone.utc)
+    days = max(0, (applied - posted).days)
+    if days <= 3:
+        return "0-3d"
+    if days <= 7:
+        return "4-7d"
+    if days <= 14:
+        return "8-14d"
+    return "15d+"
+
+
 def _aggregate_funnel(rows: list[dict]) -> dict:
     totals = {"applied": 0, "responded": 0, "interviewed": 0,
               "offers": 0, "ghosted": 0}
@@ -368,6 +390,8 @@ def _aggregate_funnel(rows: list[dict]) -> dict:
     by_source: dict[str, dict] = {}
     by_qual_prompt: dict[str, dict] = {}
     by_draft_prompt: dict[str, dict] = {}
+    by_warm_path: dict[str, dict] = {}
+    by_posting_age: dict[str, dict] = {}
 
     def bump(d: dict, key: str, responded: bool) -> None:
         b = d.setdefault(key, {"applied": 0, "responded": 0})
@@ -391,13 +415,19 @@ def _aggregate_funnel(rows: list[dict]) -> dict:
              _parse_qual(r).get("prompt_version") or "none", responded)
         bump(by_draft_prompt,
              r.get("draft_prompt_version") or "none", responded)
+        warm = r.get("warm_path_used")
+        bump(by_warm_path,
+             "warm" if warm else ("cold" if warm is not None else "unmarked"),
+             responded)
+        bump(by_posting_age, _posting_age_band(r), responded)
 
     def add_rates(d: dict) -> None:
         for b in d.values():
             b["response_rate"] = (round(b["responded"] / b["applied"], 3)
                                   if b["applied"] else 0.0)
 
-    for d in (by_fit, by_source, by_qual_prompt, by_draft_prompt):
+    for d in (by_fit, by_source, by_qual_prompt, by_draft_prompt,
+              by_warm_path, by_posting_age):
         add_rates(d)
     n = totals["applied"]
     totals["response_rate"] = round(totals["responded"] / n, 3) if n else 0.0
@@ -409,6 +439,8 @@ def _aggregate_funnel(rows: list[dict]) -> dict:
         "by_source": by_source,
         "by_qualify_prompt": by_qual_prompt,
         "by_draft_prompt": by_draft_prompt,
+        "by_warm_path": by_warm_path,
+        "by_posting_age": by_posting_age,
         "autopsy": _autopsy(rows),
     }
 
@@ -704,7 +736,11 @@ class Storage:
 
     async def set_application_status(
         self, job_id: int, status: str, draft_path: str | None = None,
+        warm_path: bool | None = None,
     ) -> None:
+        """`warm_path` marks whether the application went through a warm
+        contact (referral/direct outreach) — the warm-vs-cold split in
+        `funnel_stats` depends on it. None leaves the flag untouched."""
         if status not in self.APPLICATION_STATUSES:
             raise ValueError(
                 f"status must be one of {sorted(self.APPLICATION_STATUSES)}"
@@ -716,6 +752,8 @@ class Storage:
                     row["application_status"] = status
                     if draft_path:
                         row["draft_path"] = draft_path
+                    if warm_path is not None:
+                        row["warm_path_used"] = warm_path
                     if status == "applied":
                         row["applied_at"] = datetime.now(timezone.utc)
                     return
@@ -726,10 +764,11 @@ class Storage:
                 UPDATE jobs
                    SET application_status = $2,
                        draft_path = COALESCE($3, draft_path),
+                       warm_path_used = COALESCE($4, warm_path_used),
                        applied_at = {applied_at_expr}
                  WHERE id = $1
                 """,
-                job_id, status, draft_path,
+                job_id, status, draft_path, warm_path,
             )
 
     async def record_draft(
@@ -751,6 +790,7 @@ class Storage:
                     row["draft_prompt_version"] = prompt_version
                     row["draft_model"] = model
                     row["draft_keyword_coverage"] = keyword_coverage
+                    row["drafted_at"] = datetime.now(timezone.utc)
                     return
             return
         async with self.pool.acquire() as conn:
@@ -761,10 +801,31 @@ class Storage:
                        draft_path = $2,
                        draft_prompt_version = $3,
                        draft_model = $4,
-                       draft_keyword_coverage = $5
+                       draft_keyword_coverage = $5,
+                       drafted_at = NOW()
                  WHERE id = $1
                 """,
                 job_id, path, prompt_version, model, keyword_coverage,
+            )
+
+    async def drafts_today(self, now: datetime | None = None) -> int:
+        """Drafts generated today (UTC) — the autopilot daily-budget gate."""
+        now = now or datetime.now(timezone.utc)
+        if self.pool is None:
+            count = 0
+            for row in self._memory.values():
+                ts = row.get("drafted_at")
+                if isinstance(ts, datetime):
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    if ts.date() == now.date():
+                        count += 1
+            return count
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT COUNT(*) FROM jobs "
+                "WHERE drafted_at::date = $1::date",
+                now,
             )
 
     async def add_stage(self, job_id: int, stage: str, notes: str = "") -> None:
@@ -873,7 +934,8 @@ class Storage:
                     """
                     SELECT source, fit_score, qualification, seniority,
                            remote_status, draft_prompt_version,
-                           draft_keyword_coverage, application_status, outcome
+                           draft_keyword_coverage, warm_path_used,
+                           posted_at, applied_at, application_status, outcome
                       FROM jobs
                      WHERE applied_at IS NOT NULL
                     """
@@ -903,6 +965,125 @@ class Storage:
                 limit,
             )
             return [dict(r) for r in rows]
+
+    # --- Re-filtering (config/profile changed; see cli `refilter`) ---
+
+    async def active_jobs(self) -> list[dict]:
+        """Every active row with enough fields to rebuild a Job for
+        re-running the pre-filter after a rules change."""
+        if self.pool is None:
+            return [dict(r) for r in self._memory.values()
+                    if r.get("active", True)]
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch(
+                """
+                SELECT id, source, source_id, company, company_display,
+                       title, location_raw, remote_status, description_text,
+                       apply_url, posted_at, comp_min_usd, comp_max_usd,
+                       comp_disclosed, comp_currency_original, tags,
+                       prefilter_passed
+                  FROM jobs
+                 WHERE active = TRUE
+                """
+            )
+            return [dict(r) for r in records]
+
+    async def update_prefilter(self, job_id: int, pf) -> None:
+        """Write back a re-run PreFilterResult. Qualification is untouched
+        — rows that newly pass will be picked up by the next qualify."""
+        if self.pool is None:
+            for row in self._memory.values():
+                if row["id"] == job_id:
+                    row["prefilter"] = pf.model_dump()
+                    row["prefilter_passed"] = pf.pass_hard_filters
+                    row["prefilter_score"] = pf.score
+                    row["role_category"] = pf.role_category.value
+                    row["seniority"] = pf.seniority.value
+                    return
+            return
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE jobs
+                   SET prefilter = $2::jsonb,
+                       prefilter_passed = $3,
+                       prefilter_score = $4,
+                       role_category = $5,
+                       seniority = $6
+                 WHERE id = $1
+                """,
+                job_id, pf.model_dump_json(), pf.pass_hard_filters,
+                pf.score, pf.role_category.value, pf.seniority.value,
+            )
+
+    # --- Autopilot (see autopilot/) ---
+
+    async def autopilot_candidates(self, *, min_fit: int = 85,
+                                   limit: int = 3) -> list[dict]:
+        """Top qualified roles awaiting nothing but a pack: high fit,
+        active, no user verdict yet, not yet in the state machine."""
+        def eligible(r: dict) -> bool:
+            return (r.get("verdict") == "qualified"
+                    and (r.get("fit_score") or 0) >= min_fit
+                    and r.get("active", True)
+                    and not r.get("user_verdict")
+                    and not r.get("application_status"))
+
+        if self.pool is None:
+            rows = sorted((dict(r) for r in self._memory.values()
+                           if eligible(r)),
+                          key=lambda r: -(r.get("fit_score") or 0))
+            return rows[:limit]
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch(
+                """
+                SELECT * FROM jobs
+                 WHERE verdict = 'qualified'
+                   AND fit_score >= $1
+                   AND active = TRUE
+                   AND user_verdict IS NULL
+                   AND application_status IS NULL
+                 ORDER BY fit_score DESC, posted_at DESC
+                 LIMIT $2
+                """,
+                min_fit, limit,
+            )
+            return [dict(r) for r in records]
+
+    # --- Notion mirror (see notionsync/) ---
+
+    async def tracked_jobs(self) -> list[dict]:
+        """Everything worth mirroring to the Notion board: any job Kelyn
+        reacted to or that entered the application state machine."""
+        if self.pool is None:
+            return [dict(r) for r in self._memory.values()
+                    if r.get("user_verdict") or r.get("application_status")]
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch(
+                """
+                SELECT id, company_display, company, title, apply_url,
+                       fit_score, verdict, user_verdict, application_status,
+                       applied_at, outcome, warm_path_used, draft_path,
+                       draft_keyword_coverage, notion_page_id
+                  FROM jobs
+                 WHERE user_verdict IS NOT NULL
+                    OR application_status IS NOT NULL
+                """
+            )
+            return [dict(r) for r in records]
+
+    async def set_notion_page(self, job_id: int, page_id: str) -> None:
+        if self.pool is None:
+            for row in self._memory.values():
+                if row["id"] == job_id:
+                    row["notion_page_id"] = page_id
+                    return
+            return
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE jobs SET notion_page_id = $2 WHERE id = $1",
+                job_id, page_id,
+            )
 
     # --- Company intel cache (see intel/) ---
 

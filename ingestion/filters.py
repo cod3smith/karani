@@ -12,7 +12,7 @@ from functools import lru_cache
 
 from .config import settings
 from .models import (
-    Job, PreFilterResult, RemoteStatus, RoleCategory, Seniority,
+    Job, PreFilterResult, RemoteStatus, Seniority,
 )
 from .profile import UserProfile, DEFAULT_PROFILE
 from .roles import classify
@@ -153,9 +153,19 @@ def pre_filter(job: Job, profile: UserProfile | None = None) -> PreFilterResult:
         reasons.append(f"seniority {seniority.value} not in target bands")
 
     # --- 3. Global-hire eligibility ---
+    # Relocation/visa sponsorship softens geo vetos: a region-locked role
+    # that will relocate the candidate (EU/Japan especially) goes to the
+    # LLM as "unclear" instead of being hard-dropped.
+    relocation_hit = _find_signal(haystack, settings.relocation_signals)
+    relocation_ev = _snippet(haystack, relocation_hit) if relocation_hit else ""
+
     neg = _find_signal(haystack, settings.regional_restriction_signals)
     pos = _find_signal(haystack, settings.global_hire_positive_signals)
-    if neg and not pos:
+    if neg and not pos and relocation_hit:
+        hire = "unclear"
+        hire_ev = (f"region-locked ('{neg}') but relocation/visa support: "
+                   f"{relocation_ev}")
+    elif neg and not pos:
         hire = "likely_no"
         hire_ev = _snippet(haystack, neg)
         reasons.append(f"regional restriction: {hire_ev}")
@@ -189,11 +199,11 @@ def pre_filter(job: Job, profile: UserProfile | None = None) -> PreFilterResult:
         else:
             remote = "unclear"
 
-    if remote == "no":
+    if remote == "no" and not relocation_hit:
         reasons.append("onsite required")
-    elif remote == "hybrid":
-        # Kelyn is Kenya-based — hybrid roles are functionally onsite unless the
-        # LLM sees an override.
+    elif remote == "hybrid" and not relocation_hit:
+        # Kelyn is Kenya-based — hybrid roles are functionally onsite unless
+        # the company relocates him or the LLM sees an override.
         reasons.append("hybrid required")
 
     # --- 5. Comp ---
@@ -245,6 +255,7 @@ def pre_filter(job: Job, profile: UserProfile | None = None) -> PreFilterResult:
     score += 40 if meets_target else 15 if meets_floor else 0
     score += 20 if pay_parity == "likely_yes" else 0
     score += 15 if hire == "likely_yes" else 0
+    score += 10 if relocation_hit else 0
     score += 10 if travel == "likely_yes" else 0
     score += min(15, nice_hits * 2)
     score += 5 if seniority in {Seniority.SENIOR, Seniority.STAFF,
@@ -263,6 +274,8 @@ def pre_filter(job: Job, profile: UserProfile | None = None) -> PreFilterResult:
         meets_target_comp=meets_target,
         pay_parity=pay_parity,
         pay_parity_evidence=parity_ev,
+        relocation_support="likely_yes" if relocation_hit else "unclear",
+        relocation_evidence=relocation_ev,
         travel_benefits=travel,
         travel_evidence=travel_ev,
         skill_overlap=overlap_pct,

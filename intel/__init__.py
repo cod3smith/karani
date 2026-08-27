@@ -6,6 +6,8 @@ dossier instead of re-probing the web per decision.
 """
 from __future__ import annotations
 
-from .service import dossier_text, find_warm_paths, get_company_intel
+from .service import (dossier_text, find_warm_paths, get_company_intel,
+                      score_candidates)
 
-__all__ = ["get_company_intel", "find_warm_paths", "dossier_text"]
+__all__ = ["get_company_intel", "find_warm_paths", "dossier_text",
+           "score_candidates"]

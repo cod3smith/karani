@@ -29,3 +29,14 @@ testpaths = ["tests"]
 [project.scripts]
 ingest = "ingestion.cli:main"
 karani-mcp = "mcp_server.__main__:main"
+karani-slack = "slackbridge.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "ingestion", "qualification", "drafting", "intel", "memory",
+    "slackbridge", "notionsync", "autopilot", "mcp_server",
+]

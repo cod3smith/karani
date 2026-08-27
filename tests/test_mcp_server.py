@@ -99,8 +99,10 @@ async def test_tool_listing():
         "ingest", "sweep", "discover", "qualify", "digest", "shortlist",
         "get_job", "pipeline_stats", "next_actions", "funnel_stats",
         "draft", "prep", "draft_followup", "company_intel", "warm_paths",
-        "notify_slack", "record_verdict", "set_status", "add_stage",
-        "record_outcome", "remember", "recall",
+        "notify_slack", "notion_sync", "autopilot", "record_verdict",
+        "set_status",
+        "add_stage", "record_outcome", "record_question", "remember",
+        "recall",
     }
 
 
@@ -194,6 +196,29 @@ async def test_remember_and_recall_tools(storage):
 
 
 @pytest.mark.asyncio
+async def test_set_status_warm_path_and_record_question(storage):
+    job_id = await _seed(storage)
+    await _call("set_status", {"job_id": job_id, "status": "applied",
+                               "warm_path": True})
+    assert (await storage.get_job(job_id))["warm_path_used"] is True
+    funnel = await _call("funnel_stats", {})
+    assert funnel["by_warm_path"]["warm"]["applied"] == 1
+
+    banked = await _call("record_question", {
+        "job_id": job_id, "question": "Why staff-level now?",
+        "stage": "screen",
+    })
+    assert banked["company"] == "GitLab"
+    recalled = await _call("recall", {"query": "GitLab interview staff",
+                                      "kind": "question"})
+    assert recalled["count"] == 1
+
+    with pytest.raises(ToolError, match="no job with id=999"):
+        await srv.app.call_tool("record_question",
+                                {"job_id": 999, "question": "x"})
+
+
+@pytest.mark.asyncio
 async def test_record_verdict_writes_memory(storage):
     job_id = await _seed(storage)
     await _call("record_verdict", {"job_id": job_id, "verdict": "apply"})
@@ -281,6 +306,59 @@ async def test_notify_slack_tool(storage, monkeypatch):
     monkeypatch.delenv("SLACK_CHANNEL")
     with pytest.raises(ToolError, match="SLACK_CHANNEL not set"):
         await srv.app.call_tool("notify_slack", {"kind": "digest"})
+
+
+@pytest.mark.asyncio
+async def test_autopilot_tool(storage, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SLACK_CHANNEL", "D9")
+    posts = []
+
+    class StubSlack:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def post_message(self, channel, text, blocks=None, **kw):
+            posts.append(channel)
+            return {"ok": True}
+
+    import slackbridge
+    monkeypatch.setattr(slackbridge, "SlackClient", StubSlack)
+    monkeypatch.setattr(srv, "_make_qualifier",
+                        lambda p, m: ScriptedLLM(DRAFT_RESPONSE))
+    job_id = await _seed(storage)
+    row = await storage.get_job(job_id)
+    row.update(verdict="qualified", fit_score=92)
+
+    result = await _call("autopilot", {})
+    assert result["drafted"] == 1 and result["delivered"] == 1
+    assert posts == ["D9"]
+    assert (await storage.get_job(job_id))["application_status"] == "drafting"
+
+    monkeypatch.delenv("SLACK_CHANNEL")
+    with pytest.raises(ToolError, match="SLACK_CHANNEL not set"):
+        await srv.app.call_tool("autopilot", {})
+
+
+@pytest.mark.asyncio
+async def test_notion_sync_tool(storage, monkeypatch):
+    calls = []
+
+    async def fake_sync(_storage, _client, database_id):
+        calls.append(database_id)
+        return {"tracked": 2, "created": 1, "updated": 1, "errors": 0}
+
+    import notionsync
+    monkeypatch.setattr(notionsync, "sync_jobs", fake_sync)
+    monkeypatch.setattr(notionsync, "NotionClient", lambda: object())
+    monkeypatch.setenv("NOTION_DATABASE_ID", "db-42")
+    result = await _call("notion_sync", {})
+    assert result == {"tracked": 2, "created": 1, "updated": 1, "errors": 0}
+    assert calls == ["db-42"]
+
+    monkeypatch.delenv("NOTION_DATABASE_ID")
+    with pytest.raises(ToolError, match="NOTION_DATABASE_ID not set"):
+        await srv.app.call_tool("notion_sync", {})
 
 
 @pytest.mark.asyncio

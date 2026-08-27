@@ -39,14 +39,24 @@ background). It:
 10. **Converses** over Slack (`slackbridge/`, Socket Mode): pushes the
     digest/worklist and takes the same verbs back (`verdict 123 apply`,
     `prep 45`). See `docs/adrs/0010-slack-two-way-surface.md`.
-11. **Converts**: fast-lane flags on fresh high-fit roles, ATS keyword
+11. **Mirrors** tracked applications onto a Notion board
+    (`notionsync/`), updated live on every state change and reconciled
+    by the scheduled run. See `docs/adrs/0011-notion-mirror.md`.
+12. **Hunts** continuously (`autopilot/`, `make hunt`): drafts packs
+    for top-fit roles unattended (fit floor + per-run cap) and delivers
+    Slack review cards with Approve/Skip/Applied buttons. Never submits
+    — see `docs/adrs/0012-autopilot-draft-human-send.md`.
+13. **Converts**: fast-lane flags on fresh high-fit roles, ATS keyword
     coverage per draft, cached company dossiers (`intel/`), warm-path
     candidates, interview prep packs, and dossier-hooked follow-ups —
     all measured through `funnel_stats` (roadmap Tier 1.5).
 
-**Positioning:** target *companies that hire globally at SF pay bands
-regardless of candidate location*. Everything downstream assumes that thesis.
-See `docs/vision.md`.
+**Positioning:** two role shapes qualify — (1) *companies that hire
+globally at SF pay bands regardless of candidate location*, and
+(2) *roles that sponsor a visa + relocation, EU and Japan preferred*
+(local top-of-market comp acceptable there). Target roles: software
+engineering, research engineering, ML/AI — computational-bio roles are
+excluded. See `docs/vision.md`.
 
 ---
 
@@ -110,8 +120,17 @@ karani/
 ├── memory/                          ← memory layer (docs/memory.md)
 │   └── manager.py                   ← MemoryManager: off | basic | mem0 modes
 │
+├── autopilot/                       ← continuous hunt: draft + deliver packs (ADR 0012)
+│   └── runner.py                    ← candidates -> pack -> Slack review card
+│
+├── notionsync/                      ← Notion job-hunt board mirror (ADR 0011)
+│   ├── client.py                    ← Notion REST via httpx (no SDK)
+│   └── sync.py                      ← page-per-job upsert + best-effort live push
+│
+├── ops/                             ← launchd plist template (`make schedule`)
+│
 ├── mcp_server/                      ← MCP interface (stdio) over the pipeline
-│   ├── server.py                    ← MCPServer `app` + 22 tools; thin adapter
+│   ├── server.py                    ← MCPServer `app` + 25 tools; thin adapter
 │   └── __main__.py                  ← `python -m mcp_server` / `make mcp`
 │
 ├── docker-compose.yml               ← dedicated infra: pgvector Postgres (+ Ollama profile)
@@ -123,7 +142,7 @@ karani/
 │
 ├── drafts/                          ← generated cover letters + tailored bullets
 │
-├── tests/                           ← pytest suite (121+ tests, all deterministic)
+├── tests/                           ← pytest suite (158+ tests, all deterministic)
 │   ├── conftest.py
 │   ├── test_{filters,roles,storage,qualification,agent,drafting,digest,discovery}.py
 │   ├── test_e2e_pipeline.py         ← mocked-HTTP end-to-end integration test
@@ -178,6 +197,11 @@ you'll silently degrade the pipeline in a way that's hard to spot.
   reason the pipeline exists, but the *filter* is location-agnostic (a US-only
   role gets vetoed whether Kelyn's in Nairobi, Berlin, or Buenos Aires).
 - `min_comp_usd` default is $160k. Below that = not SF-band = drop.
+- **Extension (2026-08, prompts qual-v3):** `relocation_signals` soften
+  geo/onsite vetos — a region-locked or onsite role that sponsors visa +
+  relocation (EU/Japan preferred) goes to the LLM instead of being
+  dropped, and the LLM may accept local top-of-market comp for those.
+  This *adds* a second qualifying shape; it does not weaken shape one.
 
 ### 4.2 Signal matching is word-boundary anchored
 - Use `_find_signal` in `filters.py` (or the `_wb()` helper in `roles.py`).
@@ -259,7 +283,7 @@ Full details in `docs/conventions.md`. The one-liners:
 
 - Run: `make test` or `pytest tests -q`.
 - Every new module needs a smoke test at minimum.
-- All 121 existing tests are deterministic (no network, no clock). Keep it
+- All 158 existing tests are deterministic (no network, no clock). Keep it
   that way — use fake clients for LLM calls (see `tests/test_qualification.py`
   and `tests/test_agent.py`), and `httpx.MockTransport` for HTTP (see
   `tests/test_e2e_pipeline.py`).

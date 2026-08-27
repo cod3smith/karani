@@ -124,6 +124,19 @@ async def test_remember_verdict_and_outcome_compose_facts(storage):
     assert any("outcome 'offer'" in c for c in contents)
 
 
+@pytest.mark.asyncio
+async def test_remember_question_feeds_company_bank(storage):
+    m = MemoryManager(storage, mode="basic")
+    row = {"id": 3, "company_display": "PostHog", "title": "Senior BE"}
+    await m.remember_question(row, "How do you own an incident end to end?",
+                              stage="screen")
+    bank = await m.recall("PostHog interview questions", kind="question",
+                          company="PostHog")
+    assert len(bank) == 1
+    assert "screen" in bank[0]["content"]
+    assert "own an incident" in bank[0]["content"]
+
+
 # --- qualification integration ---
 
 class PromptCapturingLLM:

@@ -154,6 +154,22 @@ class MemoryManager:
             job_id=job_row.get("id"), company=company,
         )
 
+    async def remember_question(
+        self, job_row: dict, question: str, stage: str = "",
+    ) -> dict:
+        """A question actually asked in an interview — the question bank.
+
+        Company-scoped `question` memories compound: every future prep
+        pack for this company recalls them (roadmap 1.5.6).
+        """
+        company = job_row.get("company_display") or job_row.get("company") or ""
+        where = f" ({stage})" if stage else ""
+        content = f"Interview question at {company}{where}: {question}"
+        return await self.remember(
+            content, "question", source="stage",
+            job_id=job_row.get("id"), company=company,
+        )
+
     # --- read paths ---
 
     async def recall(

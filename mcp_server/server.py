@@ -469,6 +469,64 @@ async def notify_slack(kind: str = "digest", limit: int = 10) -> dict:
     return {"kind": kind, "channel": channel, "items": count}
 
 
+@app.tool()
+async def autopilot(min_fit: int | None = None,
+                    max_drafts: int | None = None) -> dict:
+    """Run one autopilot pass: draft application packs for the top-fit
+    qualified roles not yet reviewed and deliver each to Slack as a
+    review card with Approve / Skip / I-applied buttons. Billed (one
+    draft per candidate, capped by max_drafts, default 3; fit floor
+    default 85). Karani never submits — the human does."""
+    import os
+
+    from autopilot import run_autopilot
+    from autopilot.runner import DEFAULT_MAX_DRAFTS, DEFAULT_MIN_FIT
+    from slackbridge import SlackClient, SlackError
+
+    channel = os.getenv("SLACK_CHANNEL", "")
+    if not channel:
+        raise ToolError("SLACK_CHANNEL not set — autopilot needs a Slack "
+                        "channel to deliver packs to")
+    storage = await _get_storage()
+    try:
+        slack = SlackClient()
+    except SlackError as e:
+        raise ToolError(str(e)) from e
+    stats = await run_autopilot(
+        storage, slack=slack, channel=channel,
+        make_qualifier=lambda: _make_qualifier(None, None),
+        load_resume=lambda: _load_resume(None),
+        min_fit=min_fit if min_fit is not None else DEFAULT_MIN_FIT,
+        max_drafts=(max_drafts if max_drafts is not None
+                    else DEFAULT_MAX_DRAFTS),
+    )
+    return {"candidates": stats.candidates, "drafted": stats.drafted,
+            "delivered": stats.delivered, "errors": stats.errors[:5]}
+
+
+@app.tool()
+async def notion_sync() -> dict:
+    """Mirror every tracked application (any job with a verdict or an
+    application status) onto the Notion job-hunt board. Idempotent: pages
+    are created once and patched thereafter. Requires NOTION_TOKEN and
+    NOTION_DATABASE_ID (create the board with `python -m ingestion.cli
+    notion init <parent_page_id>`)."""
+    import os
+
+    from notionsync import NotionClient, NotionError, sync_jobs
+
+    database_id = os.getenv("NOTION_DATABASE_ID", "")
+    if not database_id:
+        raise ToolError("NOTION_DATABASE_ID not set — run "
+                        "`notion init <parent_page_id>` first")
+    storage = await _get_storage()
+    try:
+        client = NotionClient()
+        return await sync_jobs(storage, client, database_id)
+    except NotionError as e:
+        raise ToolError(str(e)) from e
+
+
 # -----------------------  feedback + state machine  -----------------------
 
 @app.tool()
@@ -484,28 +542,57 @@ async def record_verdict(job_id: int, verdict: str) -> dict:
     if row:
         memory = await _get_memory()
         await memory.remember_verdict(row, verdict)
+    from notionsync import maybe_sync_job
+    await maybe_sync_job(storage, job_id)
     return {"job_id": job_id, "user_verdict": verdict}
 
 
 @app.tool()
-async def set_status(job_id: int, status: str) -> dict:
+async def set_status(job_id: int, status: str,
+                     warm_path: bool | None = None) -> dict:
     """Set the application state: new, drafting, ready, applied, screen,
-    interview, offer, rejected, declined, or ghosted."""
+    interview, offer, rejected, declined, or ghosted. When marking
+    `applied`, pass warm_path=true/false (referral or direct contact vs
+    cold portal) — it feeds the warm-vs-cold split in funnel_stats."""
     storage = await _get_storage()
     try:
-        await storage.set_application_status(job_id, status)
+        await storage.set_application_status(job_id, status,
+                                             warm_path=warm_path)
     except ValueError as e:
         raise ToolError(str(e)) from e
-    return {"job_id": job_id, "application_status": status}
+    from notionsync import maybe_sync_job
+    await maybe_sync_job(storage, job_id)
+    return {"job_id": job_id, "application_status": status,
+            "warm_path": warm_path}
 
 
 @app.tool()
 async def add_stage(job_id: int, stage: str, notes: str = "") -> dict:
     """Append an interview/application stage to the job's stage log,
-    e.g. recruiter_screen, hiring_manager, technical, onsite."""
+    e.g. recruiter_screen, hiring_manager, technical, onsite. After the
+    stage, bank the questions actually asked via record_question — they
+    compound into future prep packs."""
     storage = await _get_storage()
     await storage.add_stage(job_id, stage, notes)
-    return {"job_id": job_id, "stage": stage, "notes": notes}
+    return {"job_id": job_id, "stage": stage, "notes": notes,
+            "tip": "bank their questions with record_question"}
+
+
+@app.tool()
+async def record_question(job_id: int, question: str,
+                          stage: str = "") -> dict:
+    """Bank a question actually asked in an interview for this job.
+    Company-scoped: every future prep pack for this company recalls the
+    bank, so preps get sharper with each interview."""
+    storage = await _get_storage()
+    row = await storage.get_job(job_id)
+    if row is None:
+        raise ToolError(f"no job with id={job_id}")
+    memory = await _get_memory()
+    result = await memory.remember_question(row, question, stage=stage)
+    return _jsonable({**result,
+                      "company": row.get("company_display"),
+                      "question": question})
 
 
 @app.tool()
@@ -521,6 +608,8 @@ async def record_outcome(job_id: int, outcome: str) -> dict:
     if row:
         memory = await _get_memory()
         await memory.remember_outcome(row, outcome)
+    from notionsync import maybe_sync_job
+    await maybe_sync_job(storage, job_id)
     return {"job_id": job_id, "outcome": outcome}
 
 

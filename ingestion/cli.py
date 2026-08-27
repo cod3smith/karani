@@ -1,6 +1,6 @@
 """CLI entry: `python -m ingestion.cli {run,qualify,digest,draft,prep,
-followup,intel,notify,verdict,status,stage,outcome,discover,stats,actions,
-funnel,remember,recall,sweep}`"""
+followup,intel,notify,notion,verdict,status,stage,asked,outcome,discover,stats,actions,
+funnel,remember,recall,refilter,sweep}`"""
 from __future__ import annotations
 
 import argparse
@@ -171,18 +171,25 @@ async def _verdict(job_id: int, verdict: str) -> int:
         if row:
             from memory import MemoryManager
             await MemoryManager(storage).remember_verdict(row, verdict)
+        from notionsync import maybe_sync_job
+        await maybe_sync_job(storage, job_id)
     finally:
         await storage.close()
     return 0
 
 
-async def _status(job_id: int, status: str) -> int:
+async def _status(job_id: int, status: str,
+                  warm_path: bool | None = None) -> int:
     _configure_logging()
     storage = Storage(settings.database_url)
     await storage.connect()
     try:
-        await storage.set_application_status(job_id, status)
-        print(f"job_id={job_id} application_status={status}")
+        await storage.set_application_status(job_id, status,
+                                             warm_path=warm_path)
+        warm = "" if warm_path is None else f" warm_path={warm_path}"
+        print(f"job_id={job_id} application_status={status}{warm}")
+        from notionsync import maybe_sync_job
+        await maybe_sync_job(storage, job_id)
     finally:
         await storage.close()
     return 0
@@ -195,9 +202,33 @@ async def _stage(job_id: int, stage: str, notes: str) -> int:
     try:
         await storage.add_stage(job_id, stage, notes)
         print(f"job_id={job_id} + stage={stage!r} notes={notes!r}")
+        print(f"  tip: log what they asked with "
+              f"`asked {job_id} \"<question>\" --stage {stage}` — "
+              f"it feeds future prep packs")
     finally:
         await storage.close()
     return 0
+
+
+async def _asked(job_id: int, question: str, stage: str) -> int:
+    _configure_logging()
+    from memory import MemoryManager
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        row = await storage.get_job(job_id)
+        if not row:
+            print(f"ERROR: no job with id={job_id}", file=sys.stderr)
+            return 2
+        result = await MemoryManager(storage).remember_question(
+            row, question, stage=stage,
+        )
+        state = "already recorded" if result.get("deduped") else "recorded"
+        print(f"{state}: question bank for "
+              f"{row.get('company_display')} (memory id={result.get('id')})")
+        return 0
+    finally:
+        await storage.close()
 
 
 async def _outcome(job_id: int, outcome: str) -> int:
@@ -211,6 +242,8 @@ async def _outcome(job_id: int, outcome: str) -> int:
         if row:
             from memory import MemoryManager
             await MemoryManager(storage).remember_outcome(row, outcome)
+        from notionsync import maybe_sync_job
+        await maybe_sync_job(storage, job_id)
     finally:
         await storage.close()
     return 0
@@ -382,6 +415,83 @@ async def _notify(kind: str, limit: int) -> int:
         await storage.close()
 
 
+# -----------------------  autopilot  -----------------------
+
+async def _autopilot(min_fit: int | None, max_drafts: int | None) -> int:
+    _configure_logging()
+    import os
+
+    from autopilot import run_autopilot
+    from autopilot.runner import DEFAULT_MAX_DRAFTS, DEFAULT_MIN_FIT
+    from qualification import get_qualifier
+    from slackbridge import SlackClient
+
+    channel = os.getenv("SLACK_CHANNEL", "")
+    if not channel:
+        print("autopilot: SLACK_CHANNEL not set — nothing to deliver to; "
+              "skipping (configure Slack to enable the continuous hunt)")
+        return 0
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        stats = await run_autopilot(
+            storage, slack=SlackClient(), channel=channel,
+            make_qualifier=lambda: get_qualifier(),
+            load_resume=lambda: ResumeProfile.from_file(DEFAULT_RESUME_PATH),
+            min_fit=min_fit if min_fit is not None else DEFAULT_MIN_FIT,
+            max_drafts=(max_drafts if max_drafts is not None
+                        else DEFAULT_MAX_DRAFTS),
+        )
+        print(f"candidates={stats.candidates} drafted={stats.drafted} "
+              f"delivered={stats.delivered} errors={len(stats.errors)}")
+        for e in stats.errors[:5]:
+            print(f"  ERR: {e}", file=sys.stderr)
+        return 0 if not stats.errors else 1
+    finally:
+        await storage.close()
+
+
+# -----------------------  notion  -----------------------
+
+async def _notion(action: str, parent_page_id: str | None) -> int:
+    _configure_logging()
+    import os
+
+    from notionsync import NotionClient, NotionError, init_database, sync_jobs
+
+    try:
+        client = NotionClient()
+    except NotionError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    if action == "init":
+        if not parent_page_id:
+            print("ERROR: notion init requires a parent page id "
+                  "(share that page with the integration first)",
+                  file=sys.stderr)
+            return 2
+        db_id = await init_database(client, parent_page_id)
+        print(f"created database: {db_id}")
+        print("add to .env:  NOTION_DATABASE_ID=" + db_id)
+        return 0
+
+    database_id = os.getenv("NOTION_DATABASE_ID", "")
+    if not database_id:
+        print("ERROR: NOTION_DATABASE_ID not set — run "
+              "`notion init <parent_page_id>` first", file=sys.stderr)
+        return 2
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        result = await sync_jobs(storage, client, database_id)
+        print(f"tracked={result['tracked']} created={result['created']} "
+              f"updated={result['updated']} errors={result['errors']}")
+        return 0 if not result["errors"] else 1
+    finally:
+        await storage.close()
+
+
 # -----------------------  remember / recall  -----------------------
 
 async def _remember(content: str, kind: str, company: str | None) -> int:
@@ -419,6 +529,60 @@ async def _recall(query: str, kind: str | None, company: str | None,
     finally:
         await storage.close()
     return 0
+
+
+# -----------------------  refilter  -----------------------
+
+async def _refilter() -> int:
+    """Re-run the pre-filter over all active rows after a rules change
+    (profile skills, geo/relocation signals, title exclusions)."""
+    _configure_logging()
+    from .filters import pre_filter
+    from .models import Job, RemoteStatus, Source
+
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        rows = await storage.active_jobs()
+        was_passing = sum(1 for r in rows if r.get("prefilter_passed"))
+        flipped_in = flipped_out = 0
+        for r in rows:
+            try:
+                job = Job(
+                    source=Source(r["source"]),
+                    source_id=r["source_id"],
+                    company=r.get("company") or "",
+                    company_display=r.get("company_display") or "",
+                    title=r.get("title") or "",
+                    location_raw=r.get("location_raw") or "",
+                    remote_status=RemoteStatus(r.get("remote_status")
+                                               or "unknown"),
+                    description_text=r.get("description_text") or "",
+                    apply_url=r.get("apply_url") or "",
+                    posted_at=r.get("posted_at"),
+                    comp_min_usd=r.get("comp_min_usd"),
+                    comp_max_usd=r.get("comp_max_usd"),
+                    comp_disclosed=bool(r.get("comp_disclosed")),
+                    comp_currency_original=r.get("comp_currency_original"),
+                    tags=list(r.get("tags") or []),
+                )
+                pf = pre_filter(job)
+                if pf.pass_hard_filters != bool(r.get("prefilter_passed")):
+                    if pf.pass_hard_filters:
+                        flipped_in += 1
+                    else:
+                        flipped_out += 1
+                await storage.update_prefilter(r["id"], pf)
+            except Exception as e:
+                print(f"  ERR job_id={r.get('id')}: {e}", file=sys.stderr)
+        now_passing = was_passing + flipped_in - flipped_out
+        print(f"refiltered={len(rows)} passing {was_passing} -> {now_passing} "
+              f"(+{flipped_in} newly pass, -{flipped_out} newly drop)")
+        print("newly-passing rows are pending qualification on the next "
+              "qualify run")
+        return 0
+    finally:
+        await storage.close()
 
 
 # -----------------------  discover / stats / sweep  -----------------------
@@ -518,6 +682,11 @@ def main() -> None:
     st = sub.add_parser("status", help="set application state machine status")
     st.add_argument("job_id", type=int)
     st.add_argument("status", choices=sorted(Storage.APPLICATION_STATUSES))
+    warm_group = st.add_mutually_exclusive_group()
+    warm_group.add_argument("--warm", action="store_true",
+                            help="application went through a warm contact")
+    warm_group.add_argument("--cold", action="store_true",
+                            help="cold portal application")
 
     sg = sub.add_parser("stage", help="log an interview or application stage")
     sg.add_argument("job_id", type=int)
@@ -525,9 +694,16 @@ def main() -> None:
                     help="e.g. recruiter_screen, hiring_manager, technical, onsite")
     sg.add_argument("--notes", type=str, default="")
 
+    ak = sub.add_parser("asked", help="log an interview question into the question bank")
+    ak.add_argument("job_id", type=int)
+    ak.add_argument("question", type=str)
+    ak.add_argument("--stage", type=str, default="")
+
     oc = sub.add_parser("outcome", help="record final outcome")
     oc.add_argument("job_id", type=int)
     oc.add_argument("outcome", choices=sorted(Storage.OUTCOMES))
+
+    sub.add_parser("refilter", help="re-run the pre-filter over all active rows after a rules change")
 
     disc = sub.add_parser("discover", help="probe unpromoted companies for ATS presence")
     disc.add_argument("--limit", type=int, default=10)
@@ -560,6 +736,15 @@ def main() -> None:
     nt = sub.add_parser("notify", help="push digest or actions to Slack")
     nt.add_argument("--kind", choices=["digest", "actions"], default="digest")
     nt.add_argument("--limit", type=int, default=10)
+
+    ap = sub.add_parser("autopilot", help="draft packs for top-fit roles and deliver to Slack for review")
+    ap.add_argument("--min-fit", type=int, default=None)
+    ap.add_argument("--max-drafts", type=int, default=None)
+
+    no = sub.add_parser("notion", help="mirror tracked applications to a Notion board")
+    no.add_argument("action", choices=["init", "sync"])
+    no.add_argument("parent_page_id", nargs="?", default=None,
+                    help="for init: page id to create the database under")
 
     rm = sub.add_parser("remember", help="store a fact in the memory layer")
     rm.add_argument("content", type=str)
@@ -594,11 +779,16 @@ def main() -> None:
     elif args.cmd == "verdict":
         sys.exit(asyncio.run(_verdict(args.job_id, args.verdict)))
     elif args.cmd == "status":
-        sys.exit(asyncio.run(_status(args.job_id, args.status)))
+        warm = True if args.warm else (False if args.cold else None)
+        sys.exit(asyncio.run(_status(args.job_id, args.status, warm)))
     elif args.cmd == "stage":
         sys.exit(asyncio.run(_stage(args.job_id, args.stage, args.notes)))
+    elif args.cmd == "asked":
+        sys.exit(asyncio.run(_asked(args.job_id, args.question, args.stage)))
     elif args.cmd == "outcome":
         sys.exit(asyncio.run(_outcome(args.job_id, args.outcome)))
+    elif args.cmd == "refilter":
+        sys.exit(asyncio.run(_refilter()))
     elif args.cmd == "discover":
         sys.exit(asyncio.run(_discover(args.limit)))
     elif args.cmd == "stats":
@@ -617,6 +807,10 @@ def main() -> None:
         sys.exit(asyncio.run(_intel(args.company, args.refresh)))
     elif args.cmd == "notify":
         sys.exit(asyncio.run(_notify(args.kind, args.limit)))
+    elif args.cmd == "notion":
+        sys.exit(asyncio.run(_notion(args.action, args.parent_page_id)))
+    elif args.cmd == "autopilot":
+        sys.exit(asyncio.run(_autopilot(args.min_fit, args.max_drafts)))
     elif args.cmd == "remember":
         sys.exit(asyncio.run(_remember(args.content, args.kind, args.company)))
     elif args.cmd == "recall":

@@ -40,9 +40,9 @@ class UserProfile:
         "rag", "retrieval augmented", "pytorch", "tensorflow", "jax",
         "transformers", "hugging face", "vector database", "embedding",
         "fine-tuning", "fine tuning",
-        # Bio / health
-        "biotech", "bioinformatics", "genomics", "single cell", "single-cell",
-        "computational biology", "drug discovery", "healthtech", "clinical",
+        # Research engineering
+        "research engineer", "ml research", "model training",
+        "distributed training", "inference optimization", "gpu",
         # Systems / infra
         "kubernetes", "aws", "gcp", "azure", "terraform", "postgres",
         "kafka", "distributed systems", "microservices",

@@ -23,11 +23,13 @@ HELP = """\
 `actions` — prioritized worklist  ·  `digest [n]` — top roles
 `job <id>` — detail  ·  `funnel` — conversion rates  ·  `stats` — counts
 `verdict <id> <apply|shortlist|later|skip|applied>` — react to a suggestion
-`status <id> <state>` · `stage <id> <name> [notes]` · `outcome <id> <o>`
+`status <id> <state> [warm|cold]` · `stage <id> <name> [notes]` · `outcome <id> <o>`
+`asked <id> <question>` — bank an interview question for future preps
 `qualify [n]` — LLM-qualify pending (billed)
 `draft <id>` · `prep <id>` · `followup <id>` — generate materials (billed)
 `intel <company>` — company dossier  ·  `warm <company>` — warm paths
 `remember <fact>` · `recall <query>` — memory layer
+`sync` — push tracked applications to the Notion board
 """
 
 
@@ -127,21 +129,49 @@ async def _dispatch(cmd, args, storage, memory,
         row = await storage.get_job(job_id)
         if row and memory is not None:
             await memory.remember_verdict(row, args[1].lower())
+        from notionsync import maybe_sync_job
+        await maybe_sync_job(storage, job_id)
         return f"Recorded: job {job_id} → {args[1].lower()}."
 
     if cmd == "status":
         job_id = _need_id(args)
         if len(args) < 2:
-            return f"Usage: `status <id> <{('|'.join(sorted(Storage.APPLICATION_STATUSES)))}>`"
-        await storage.set_application_status(job_id, args[1].lower())
-        return f"Job {job_id} → {args[1].lower()}."
+            return f"Usage: `status <id> <{('|'.join(sorted(Storage.APPLICATION_STATUSES)))}> [warm|cold]`"
+        warm = None
+        if len(args) > 2 and args[2].lower() in ("warm", "cold"):
+            warm = args[2].lower() == "warm"
+        await storage.set_application_status(job_id, args[1].lower(),
+                                             warm_path=warm)
+        from notionsync import maybe_sync_job
+        await maybe_sync_job(storage, job_id)
+        note = "" if warm is None else f" ({args[2].lower()} path)"
+        hint = ("" if args[1].lower() != "applied" or warm is not None
+                else " Tip: add `warm` or `cold` next time — it feeds the "
+                     "warm-vs-cold funnel split.")
+        return f"Job {job_id} → {args[1].lower()}{note}.{hint}"
 
     if cmd == "stage":
         job_id = _need_id(args)
         if len(args) < 2:
             return "Usage: `stage <id> <name> [notes]`"
         await storage.add_stage(job_id, args[1], " ".join(args[2:]))
-        return f"Stage `{args[1]}` logged on job {job_id}."
+        return (f"Stage `{args[1]}` logged on job {job_id}. "
+                f"Log their questions with `asked {job_id} <question>` — "
+                f"they feed future prep packs.")
+
+    if cmd == "asked":
+        job_id = _need_id(args)
+        if len(args) < 2:
+            return "Usage: `asked <id> <the question they asked>`"
+        if memory is None:
+            return "Memory layer is off."
+        row = await storage.get_job(job_id)
+        if not row:
+            return f"No job with id={job_id}."
+        result = await memory.remember_question(row, " ".join(args[1:]))
+        return ("Already in the question bank."
+                if result.get("deduped")
+                else f"Question banked for {row.get('company_display')}.")
 
     if cmd == "outcome":
         job_id = _need_id(args)
@@ -151,6 +181,8 @@ async def _dispatch(cmd, args, storage, memory,
         row = await storage.get_job(job_id)
         if row and memory is not None:
             await memory.remember_outcome(row, args[1].lower())
+        from notionsync import maybe_sync_job
+        await maybe_sync_job(storage, job_id)
         return f"Outcome recorded: job {job_id} → {args[1].lower()}."
 
     if cmd == "qualify":
@@ -177,8 +209,14 @@ async def _dispatch(cmd, args, storage, memory,
                                    prompt_version=pkg.prompt_version,
                                    model=pkg.model,
                                    keyword_coverage=pkg.keyword_coverage)
-        return (f"Drafted `{path}` — {len(pkg.cover_letter.split())}-word "
-                f"letter, keyword coverage {pkg.keyword_coverage}.")
+        from notionsync import maybe_sync_job
+        await maybe_sync_job(storage, job_id)
+        letter = pkg.cover_letter.strip()
+        if len(letter) > 2600:
+            letter = letter[:2600] + "\n[truncated — full text in the file]"
+        return (f"Drafted `{path}` — {len(pkg.cover_letter.split())} words, "
+                f"keyword coverage {pkg.keyword_coverage}.\n\n"
+                f"*Cover letter:*\n>>> {letter}")
 
     if cmd == "prep":
         from drafting import prep_for_job
@@ -198,9 +236,15 @@ async def _dispatch(cmd, args, storage, memory,
             qualification=row.get("qualification"),
             dossier=dossier_text(intel), question_bank=bank,
         )
-        return (f"Prep pack: `{path}` — {len(pkg.likely_questions)} likely "
-                f"questions, {len(pkg.questions_to_ask)} to ask, "
-                f"{len(pkg.warm_openers)} warm openers.")
+        likely = "\n".join(f"• {q.question}"
+                           for q in pkg.likely_questions[:6])
+        to_ask = "\n".join(f"• {q.question}"
+                           for q in pkg.questions_to_ask[:5])
+        return (f"Prep pack: `{path}`\n\n"
+                f"*Brief:* {pkg.company_brief[:600]}\n\n"
+                f"*They'll likely ask:*\n{likely or '(none)'}\n\n"
+                f"*Ask them:*\n{to_ask or '(none)'}\n\n"
+                f"Full pack (answers + warm openers) in the file.")
 
     if cmd == "followup":
         from drafting import followup_for_job
@@ -236,6 +280,23 @@ async def _dispatch(cmd, args, storage, memory,
             return "No public warm-path candidates found."
         return "*Warm-path candidates:*\n" + "\n".join(
             f"• {p['login']} — {p['url']}" for p in paths[:10])
+
+    if cmd == "sync":
+        import os
+
+        from notionsync import NotionClient, NotionError, sync_jobs
+        database_id = os.getenv("NOTION_DATABASE_ID", "")
+        if not database_id:
+            return ("Notion is not configured — set NOTION_TOKEN and "
+                    "NOTION_DATABASE_ID (see README).")
+        try:
+            result = await sync_jobs(storage, NotionClient(), database_id)
+        except NotionError as e:
+            return f"Notion sync failed: `{e}`"
+        return (f"Notion board synced: {result['tracked']} tracked, "
+                f"{result['created']} created, {result['updated']} updated"
+                + (f", {result['errors']} errors" if result["errors"] else "")
+                + ".")
 
     if cmd == "remember":
         if not args:

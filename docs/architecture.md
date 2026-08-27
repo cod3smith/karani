@@ -140,6 +140,36 @@ Public surface:
 - `handle_command(text, storage=..., memory=...)` → mrkdwn reply
 - `python -m slackbridge` — the listener daemon
 
+### `autopilot/`
+
+The continuous hunt (ADR 0012). One pass = `autopilot_candidates`
+(qualified, fit >= floor, unreviewed, not in the state machine) →
+`draft_for_job` per candidate → Slack review card (`pack_blocks`) with
+Approve/Skip/Applied buttons → Notion push. Button clicks arrive as
+`interactive` Socket Mode envelopes and route through
+`slackbridge/interactions.py` onto the same Storage transitions as the
+text verbs. Guardrails: fit floor, per-run cap (0 disables), drafted
+jobs leave the pool (no double billing), and karani never submits.
+
+Public surface:
+- `run_autopilot(storage, slack=..., channel=..., make_qualifier=...,
+  load_resume=..., min_fit=85, max_drafts=3)` → `AutopilotStats`
+
+### `notionsync/`
+
+The Notion job-hunt board (ADR 0011): one-way mirror, Postgres stays the
+source of truth. `client.py` is Notion REST over httpx; `sync.py` holds
+`init_database` (karani owns the schema), `sync_jobs` (full reconcile,
+runs in `daily-full`), and `maybe_sync_job` (best-effort live push after
+every state change — no-ops unconfigured, never raises). Page identity is
+`notion_page_id` on the job row: create once, PATCH after, recreate on
+404.
+
+Public surface:
+- `NotionClient`, `init_database(client, parent_page_id)`
+- `sync_jobs(storage, client, database_id)` → counts
+- `maybe_sync_job(storage, job_id)` → bool
+
 ### `memory/`
 
 The memory layer (full doc: `docs/memory.md`, decision: ADR 0009).
@@ -160,7 +190,7 @@ Public surface:
 ### `mcp_server/`
 
 The interactive interface layer — an MCP server (official `mcp` SDK 2.x,
-stdio) exposing 22 tools that map 1:1 onto the CLI verbs. Strictly a thin
+stdio) exposing 25 tools that map 1:1 onto the CLI verbs. Strictly a thin
 adapter: tools call the same runners and `Storage` methods the CLI calls,
 and hold no business logic of their own. Storage is a lazily-connected
 process-wide singleton so the in-memory fallback keeps state across tool

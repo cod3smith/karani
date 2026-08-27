@@ -4,11 +4,17 @@ Fetches job postings from nine sources, classifies the role, extracts geo/comp/c
 
 ## Positioning
 
-Target: **companies that hire globally at SF pay bands, regardless of candidate location.** Everything downstream assumes that thesis.
+Two role shapes qualify:
 
-- Hard gates: senior/staff engineering role, remote (not hybrid), region-locked jobs vetoed, comp ≥ $160k where disclosed.
-- Nice-to-have: explicit pay parity language, retreat/travel budget, must-have skill overlap.
+1. **Companies that hire globally at SF pay bands, regardless of candidate location.**
+2. **Roles that sponsor a visa + relocation** — EU and Japan preferred destinations; local top-of-market comp acceptable there.
+
+Target roles: software engineering, research engineering, ML/AI. Computational-bio / bioinformatics roles are excluded by title.
+
+- Hard gates: senior/staff engineering role, remote (not hybrid) *unless relocation is sponsored*, region-locked jobs vetoed *unless relocation is sponsored*, comp ≥ $160k where disclosed.
+- Nice-to-have: explicit pay parity language, relocation support, retreat/travel budget, must-have skill overlap.
 - Postings are scored 0–100 for ranking after they pass the hard gates.
+- Changed the rules? `python -m ingestion.cli refilter` re-judges every stored row.
 
 ## Sources
 
@@ -130,10 +136,40 @@ Tools map 1:1 onto the CLI verbs:
 | `prep`, `draft_followup` | interview prep pack; dossier-hooked follow-up note (billed) |
 | `company_intel`, `warm_paths` | cached public dossier; warm-path candidates |
 | `notify_slack` | push digest or actions to Slack |
+| `notion_sync` | reconcile the Notion job-hunt board |
+| `autopilot` | one hunt pass: draft packs for top roles, deliver review cards |
 
 Storage is shared across tool calls (Postgres via `DATABASE_URL`, or the
 in-memory fallback for a scratch session). See
 `docs/adrs/0008-mcp-server-interface.md` for the design.
+
+## The continuous hunt (autopilot)
+
+One command schedules the whole loop:
+
+```bash
+make hunt
+```
+
+**Every hour**: ingest all sources → qualify the new arrivals (idempotent
+— already-qualified rows cost nothing) → **autopilot** drafts full
+application packs for new top-fit roles and posts each to Slack as a
+review card. Quiet by design: an hour with no new high-fit roles posts
+nothing. Spend is double-bounded — fit floor (`AUTOPILOT_MIN_FIT`, 85),
+per-run cap (`AUTOPILOT_MAX_DRAFTS`, 3), and one shared daily budget
+across all 24 runs (`AUTOPILOT_MAX_DRAFTS_PER_DAY`, 5). Summary pushes
+(digest + worklist) stay twice daily (06:00, 13:00) so the channel isn't
+spammed. Each card: summary, cover letter, and buttons —
+*Approve pack* · *Skip role* · *I applied (warm)* · *I applied (cold)*.
+Approve marks it `ready` and links the posting; you submit on the portal
+and hit *I applied*. Every click records the verdict, feeds the
+taste-calibration memory, and updates the Notion board. Karani never
+submits an application — see ADR 0012.
+
+Buttons require one extra toggle on the Slack app: **Interactivity &
+Shortcuts → On** (no Request URL needed under Socket Mode).
+
+Run a single pass manually with `make autopilot`.
 
 ## Slack (two-way)
 
@@ -160,15 +196,48 @@ need only the bot token; the listener additionally needs
 
 The funnel is `application → response → screen → onsite → offer`; every
 feature targets a stage (see roadmap Tier 1.5). `funnel` shows the rates
-plus an autopsy (response rate by seniority/remote status, keyword
-coverage responded-vs-silent). Fast-lane roles (fit >= 85, posted <= 3
-days) are flagged in `actions` — apply same-day. Drafts get a
-deterministic ATS keyword pass (`drafting/keywords.py`): JD terms the
-resume misses feed the prompt, final coverage is persisted per
-application. `prep <id>` builds an interview pack (company brief,
-gap-derived questions with STAR answers, dossier-grounded questions to
-ask, warm-path openers); `followup <id>` drafts a note hooked on a fresh
-company fact; `intel <company>` shows the cached dossier behind both.
+split by fit band, source, prompt version, warm-vs-cold, and posting age
+at application, plus an autopsy (response rate by seniority/remote
+status, keyword coverage responded-vs-silent). Fast-lane roles (fit >=
+85, posted <= 3 days) are flagged in `actions` — apply same-day. Drafts
+get a deterministic ATS keyword pass (`drafting/keywords.py`): JD terms
+the resume misses feed the prompt, final coverage is persisted per
+application. `warm <company>` ranks public engineers by overlap with
+your skills; mark how you applied with `status <id> applied --warm` /
+`--cold` so the warm-vs-cold split accumulates. `prep <id>` builds an
+interview pack (company brief, gap-derived questions with STAR answers,
+dossier-grounded questions to ask, warm-path openers); after each stage,
+`asked <id> "<question>"` banks what they actually asked — future preps
+for that company recall it. `followup <id>` drafts a note hooked on a
+fresh company fact; `intel <company>` shows the cached dossier behind
+all of it.
+
+## Notion board
+
+The job hunt mirrors onto a Notion database — one page per tracked
+application, updated live on every verdict/status/outcome change and
+reconciled by the scheduled run (ADR 0011; one-way, Postgres stays the
+source of truth):
+
+```bash
+# one-time: create an internal integration at notion.so/my-integrations,
+# share a parent page with it, put NOTION_TOKEN in .env, then:
+python -m ingestion.cli notion init <parent_page_id>   # prints NOTION_DATABASE_ID
+python -m ingestion.cli notion sync                    # full reconcile any time
+```
+
+Slack `sync` and the `notion_sync` MCP tool do the same reconcile.
+
+## Scheduling
+
+```bash
+make schedule      # launchd: make daily-full at 06:00 + 13:00, logs/daily-*.log
+make unschedule
+```
+
+`daily-full` = ingest → qualify → digest → Slack digest + actions push →
+Notion sync. The push and sync steps are best-effort: unconfigured or
+briefly-down channels never sink the pipeline run.
 
 ## Memory
 
@@ -265,6 +334,18 @@ Every reaction you record with `verdict` writes to `user_verdict` + `user_verdic
 3. If it's a per-company ATS, add company slugs to `TARGETS`. If it's a feed, add the enum to `FEED_SOURCES`.
 4. Every fetcher must use `get_with_retry` (per-host semaphore + backoff).
 5. Every fetched job must call `.finalize()` so `content_hash` and `canonical_hash` are populated.
+
+## Changing the rules
+
+Edit `ingestion/profile.py` (skills, seniority), `ingestion/config.py`
+(geo/relocation/comp signals, title exclusions), or the prompts — then
+re-judge everything already stored:
+
+```bash
+python -m ingestion.cli refilter   # re-runs the pre-filter over all active rows
+```
+
+Newly-passing rows queue for the next qualify run automatically.
 
 ## Gotchas
 

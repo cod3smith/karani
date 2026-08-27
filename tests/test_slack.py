@@ -177,6 +177,30 @@ async def test_status_stage_outcome_flow(env):
 
 
 @pytest.mark.asyncio
+async def test_status_warm_marker(env):
+    storage, _, job_id = env
+    out = await _cmd(env, f"status {job_id} applied warm")
+    assert "warm path" in out
+    assert (await storage.get_job(job_id))["warm_path_used"] is True
+    # Unmarked applied nudges toward tagging next time.
+    other = _job("2")
+    from ingestion.filters import pre_filter as pf
+    from ingestion.profile import DEFAULT_PROFILE as prof
+    r2 = await storage.upsert(other, pf(other, prof))
+    hint = await _cmd(env, f"status {r2['id']} applied")
+    assert "warm" in hint.lower()
+
+
+@pytest.mark.asyncio
+async def test_asked_banks_question(env):
+    storage, memory, job_id = env
+    out = await _cmd(env, f"asked {job_id} how do you scale Kafka consumers")
+    assert "banked" in out.lower()
+    bank = await memory.recall("GitLab interview", kind="question")
+    assert any("Kafka consumers" in r["content"] for r in bank)
+
+
+@pytest.mark.asyncio
 async def test_qualify_command_uses_seams(env):
     class FakeLLM:
         model_name = "fake"
@@ -197,6 +221,22 @@ async def test_qualify_command_uses_seams(env):
 
 
 @pytest.mark.asyncio
+async def test_sync_command(env, monkeypatch):
+    async def fake_sync(_storage, _client, database_id):
+        return {"tracked": 3, "created": 1, "updated": 2, "errors": 0}
+
+    import notionsync
+    monkeypatch.setattr(notionsync, "sync_jobs", fake_sync)
+    monkeypatch.setattr(notionsync, "NotionClient", lambda: object())
+    monkeypatch.setenv("NOTION_DATABASE_ID", "db-1")
+    out = await _cmd(env, "sync")
+    assert "3 tracked" in out and "1 created" in out
+
+    monkeypatch.delenv("NOTION_DATABASE_ID")
+    assert "not configured" in await _cmd(env, "sync")
+
+
+@pytest.mark.asyncio
 async def test_memory_commands(env):
     assert "Stored" in await _cmd(env, "remember GitLab responds fast")
     assert "GitLab responds fast" in await _cmd(env, "recall GitLab response")
@@ -207,6 +247,25 @@ async def test_command_errors_never_raise(env):
     # Non-numeric id and internal errors come back as messages, not raises.
     out = await _cmd(env, "verdict abc apply")
     assert "failed" in out.lower() or "expected a numeric" in out.lower()
+
+
+# --- listener token validation ---
+
+@pytest.mark.asyncio
+async def test_listener_rejects_wrong_token_types(monkeypatch):
+    pytest.importorskip("slack_sdk")
+    from slackbridge.listener import run_listener
+
+    # Bot token where the app token should be -> immediate, clear error.
+    monkeypatch.setenv("SLACK_APP_TOKEN", "xoxb-not-an-app-token")
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-fine")
+    with pytest.raises(RuntimeError, match="xapp-"):
+        await run_listener()
+
+    monkeypatch.setenv("SLACK_APP_TOKEN", "xapp-fine")
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "xapp-wrong-way-round")
+    with pytest.raises(RuntimeError, match="xoxb-"):
+        await run_listener()
 
 
 # --- listener event handling ---
