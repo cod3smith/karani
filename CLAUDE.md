@@ -99,10 +99,13 @@ karani/
 │   ├── agent.py                     ← tool-using multi-turn loop
 │   └── runner.py                    ← qualify_pending() orchestration
 │
-├── drafting/                        ← cover letter + bullets + Q&A + prep + follow-up
+├── drafting/                        ← the application-pack factory
 │   ├── models.py                    ← DraftPackage
 │   ├── prompts.py                   ← versioned drafting prompt
 │   ├── keywords.py                  ← deterministic ATS keyword-gap scoring
+│   ├── humanize.py                  ← AI-tell detector + voice rewrite (humanize-v*)
+│   ├── resume_tailor.py             ← full per-job resume (resume-v*)
+│   ├── pipeline.py                  ← draft→humanize→tailor→store (ALL surfaces)
 │   ├── prep.py                      ← interview prep pack (prep-v*)
 │   ├── followup.py                  ← dossier-hooked follow-up notes (followup-v*)
 │   ├── writers.py                   ← markdown emitter
@@ -126,6 +129,9 @@ karani/
 ├── notionsync/                      ← Notion job-hunt board mirror (ADR 0011)
 │   ├── client.py                    ← Notion REST via httpx (no SDK)
 │   └── sync.py                      ← page-per-job upsert + best-effort live push
+│
+├── artifacts/                       ← per-job resume/letter objects in MinIO (ADR 0014)
+│   └── store.py                     ← S3-compatible, presigned links, best-effort
 │
 ├── orchestration/                   ← LangGraph hunt graph (ADR 0013)
 │   ├── graph.py                     ← ingest→qualify→autopilot→notion→report

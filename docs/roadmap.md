@@ -4,6 +4,46 @@ Prioritized. Each item has (1) motivation, (2) concrete steps, (3) acceptance
 criteria, (4) rough effort. Sequence is deliberate — earlier items unblock
 later ones.
 
+## Tier 0 — Production hardening (2026-08 audit)
+
+Findings from the principal-level audit, in priority order. Each is
+well-scoped — good contributor entry points.
+
+### 0.1 Cross-run dedup in candidate queries
+Same role from an ATS + a feed lands as two rows across runs (12 live
+duplicate groups measured). `autopilot_candidates` and `top_qualified`
+must dedupe on `canonical_hash` (prefer the ATS row) so one role never
+gets two packs. Full fix is 2.2. **Half-day.**
+
+### 0.2 Advisory locks around billed runs
+Hourly graph, MCP server, and Slack listener share one DB with no lock —
+concurrent `qualify`/`autopilot` runs double-bill. `pg_advisory_lock`
+wrappers; in-memory no-op. **Half-day.**
+
+### 0.3 Postgres-marked test suite
+All tests run on the in-memory fallback; the production SQL (UPSERT,
+funnel FILTERs, next_actions) has zero coverage. Same suite, `pg` marker,
+throwaway compose Postgres. **Day.**
+
+### 0.4 Heartbeat + run/cost ledger
+The graph's report node writes a run row (per-node stats, tokens from
+provider `usage`, est. cost); daily-notify alerts when the last hourly
+pass is stale >3h. Slack listener under launchd KeepAlive. **Day.**
+
+### 0.5 Per-task model routing
+Draft/humanize/tailor all hit the thinking model at high effort (~10 min
+per pack). A per-task provider/effort map — humanize on a fast cheap
+model or local Ollama — cuts pack latency ~3x and cost ~40%. **Half-day.**
+
+### 0.6 Slack listener allowlist + mem0 telemetry off
+`SLACK_ALLOWED_USERS` gate on inbound commands; disable mem0's PostHog
+telemetry in `_mem0_config`. **Hour.**
+
+### 0.7 Agent verify-before-draft (first graph branch)
+Before autopilot spends a pack's budget, agent-mode verifies geo/visa/
+comp claims for that role using the intel cache. This is the branching
+that earns LangGraph's checkpointer. **1-2 days.**
+
 ## Tier 1 — Complete the daily loop
 
 ### 1.1 Rotate the Neon DSN

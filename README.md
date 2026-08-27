@@ -1,6 +1,22 @@
-# karani — ingestion
+# karani
 
-Fetches job postings from nine sources, classifies the role, extracts geo/comp/culture signals, and stores rows for downstream LLM qualification.
+A semi-autonomous, self-hosted job-hunt pipeline. It ingests postings
+from nine sources every hour, qualifies them against *your* resume with
+an LLM, drafts a complete application pack (tailored resume + cover
+letter, de-AI'd by a measured humanizer), and delivers it to Slack as a
+review card with Approve / Skip / Applied buttons. You press submit —
+karani never does (see `docs/vision.md` non-goals).
+
+Everything is optional and degrades gracefully: it runs end-to-end with
+zero external services, and upgrades piecewise with Postgres, Slack,
+Notion, MinIO, mem0 + pgvector semantic memory, local Ollama models, and
+LangGraph orchestration. Every intelligence feature reports to a
+conversion-funnel metric so improvements are measured, not vibed.
+
+- **Quickstart:** below. **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md).
+  **Planned work:** [docs/roadmap.md](docs/roadmap.md) (Tier 0 = good
+  first issues). **Decisions:** `docs/adrs/`. **License:** MIT.
+- Drive it from any MCP client (25 tools), the CLI (21 verbs), or Slack.
 
 ## Positioning
 
@@ -163,7 +179,12 @@ across all 24 runs (`AUTOPILOT_MAX_DRAFTS_PER_DAY`, 5). Summary pushes
 (digest + worklist) stay twice daily (06:00, 13:00) so the channel isn't
 spammed. Each card: summary, cover letter, and buttons —
 *Approve pack* · *Skip role* · *I applied (warm)* · *I applied (cold)*.
-Approve marks it `ready` and links the posting; you submit on the portal
+Each pack now carries a *complete tailored resume* for the role plus the
+cover letter, both stored as per-job objects in karani's MinIO with
+presigned *tweak-and-submit* links on the card, and every pack passes a
+humanizer (AI-tell detector + rewrite in your own voice; the deterministic
+detector arbitrates, and the card shows the voice score). Approve marks it
+`ready` and links the posting; you submit on the portal
 and hit *I applied*. Every click records the verdict, feeds the
 taste-calibration memory, and updates the Notion board. Karani never
 submits an application — see ADR 0012.

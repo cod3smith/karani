@@ -136,8 +136,10 @@ class Settings:
     http_concurrency: int = _env_int("HTTP_CONCURRENCY", 6)
     # Per-host cap prevents one slow ATS from starving the rest.
     http_per_host_concurrency: int = _env_int("HTTP_PER_HOST_CONCURRENCY", 3)
+    # Set USER_AGENT with a real contact in .env — polite to the job
+    # boards you fetch from, and some rate-limit by UA reputation.
     user_agent: str = os.getenv(
-        "USER_AGENT", "karani/0.2 (job-pipeline; contact: kelyn.njeri@gmail.com)"
+        "USER_AGENT", "karani/0.2 (job-application-pipeline)"
     )
 
     # --- Storage ---
