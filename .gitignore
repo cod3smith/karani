@@ -1,0 +1,26 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Env / secrets
+.env
+.env.local
+*.pem
+
+# OS noise
+.DS_Store
+
+# Personal data — resume.md.example is the committed template
+data/resume.md
+
+# Generated output
+data/digest.html
+drafts/
+logs/

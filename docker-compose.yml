@@ -1,0 +1,46 @@
+# karani infrastructure — dedicated, local, disposable.
+#
+#   make infra-up          # postgres (with pgvector) on localhost:5433
+#   make infra-up-llm      # + ollama on localhost:11434
+#   make infra-down        # stop; volumes persist
+#
+# Point .env at it:
+#   DATABASE_URL=postgresql://karani:karani@localhost:5433/karani
+#
+# pgvector serves double duty: karani's relational store AND the vector
+# backend for the mem0 memory layer (see docs/memory.md). One database,
+# one backup story, no extra vector-store service.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: karani-db
+    environment:
+      POSTGRES_USER: karani
+      POSTGRES_PASSWORD: karani
+      POSTGRES_DB: karani
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - karani_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U karani -d karani"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Local LLM for zero-cost qualification and memory extraction.
+  # Opt-in: `docker compose --profile local-llm up -d`.
+  # After first start: `docker exec karani-ollama ollama pull qwen3:32b`
+  ollama:
+    image: ollama/ollama:latest
+    container_name: karani-ollama
+    profiles: ["local-llm"]
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - karani_ollama:/root/.ollama
+
+volumes:
+  karani_pgdata:
+  karani_ollama:

@@ -1,0 +1,30 @@
+[project]
+name = "karani"
+version = "0.2.0"
+description = "Ingestion pipeline for SF-band, global-remote engineering roles"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "beautifulsoup4>=4.12",
+    "asyncpg>=0.29",
+    "lxml>=5.0",           # for BeautifulSoup speed
+    "tenacity>=8.2",       # retry with backoff
+    "python-dotenv>=1.0",  # .env loading
+    "mcp>=2",              # MCP server (mcp_server/); 2.x API (MCPServer)
+    # OpenRouter is the default qualifier provider and uses only httpx.
+    # Anthropic direct is available via the `anthropic` extra.
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.5"]
+anthropic = ["anthropic>=0.40"]
+memory = ["mem0ai>=0.1"]  # semantic memory index; basic mode needs nothing
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[project.scripts]
+ingest = "ingestion.cli:main"
+karani-mcp = "mcp_server.__main__:main"
