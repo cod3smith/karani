@@ -106,6 +106,7 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS draft_keyword_coverage REAL;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS warm_path_used BOOLEAN;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS notion_page_id TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS drafted_at TIMESTAMPTZ;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS artifacts JSONB;
 
 -- Company intelligence cache — dossiers built from public probes (GitHub,
 -- Wikipedia, engineering blog). TTL-refreshed; consumed by agent-mode
@@ -806,6 +807,20 @@ class Storage:
                  WHERE id = $1
                 """,
                 job_id, path, prompt_version, model, keyword_coverage,
+            )
+
+    async def set_artifacts(self, job_id: int, artifacts: dict) -> None:
+        """Object-store keys for this job's application materials."""
+        if self.pool is None:
+            for row in self._memory.values():
+                if row["id"] == job_id:
+                    row["artifacts"] = artifacts
+                    return
+            return
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE jobs SET artifacts = $2::jsonb WHERE id = $1",
+                job_id, json.dumps(artifacts),
             )
 
     async def drafts_today(self, now: datetime | None = None) -> int:

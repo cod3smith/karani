@@ -301,10 +301,12 @@ async def draft(
     resume_path: str | None = None,
     output_path: str | None = None,
 ) -> dict:
-    """Draft a cover letter, tailored bullets, and application answers for a
-    job. Writes drafts/<id>_<company>__<title>.md and moves the job to the
-    `drafting` state. Billed (one LLM call)."""
-    from drafting import draft_for_job
+    """Build the full application pack for a job: cover letter + bullets
+    + answers, an AI-voice humanizer pass, a complete tailored resume,
+    and artifact uploads to object storage with presigned tweak-and-
+    submit links. Moves the job to `drafting`. Billed (up to three LLM
+    calls; KARANI_HUMANIZE / KARANI_TAILOR_RESUME toggle the extras)."""
+    from drafting import build_application_pack
 
     resume = _load_resume(resume_path)
     client = _make_qualifier(provider, model)
@@ -312,17 +314,16 @@ async def draft(
     row = await storage.get_job(job_id)
     if row is None:
         raise ToolError(f"no job with id={job_id}")
-    pkg, path = await draft_for_job(
-        client, resume=resume.raw_markdown,
-        job_row=row, qualification=row.get("qualification"),
+    pack = await build_application_pack(
+        client, storage, job_row=row,
+        resume_markdown=resume.raw_markdown,
         output_path=output_path,
     )
-    await storage.record_draft(job_id, str(path),
-                               prompt_version=pkg.prompt_version,
-                               model=pkg.model,
-                               keyword_coverage=pkg.keyword_coverage)
-    return {
-        "path": str(path),
+    if pack.failed:
+        raise ToolError("draft failed (malformed LLM output); retry")
+    pkg = pack.pkg
+    return _jsonable({
+        "path": str(pack.draft_path),
         "cover_letter_words": len(pkg.cover_letter.split()),
         "tailored_bullets": len(pkg.tailored_bullets),
         "application_answers": len(pkg.application_answers),
@@ -330,7 +331,13 @@ async def draft(
         "model": pkg.model,
         "keyword_coverage": pkg.keyword_coverage,
         "keyword_missing": pkg.keyword_missing,
-    }
+        "voice": pack.voice,
+        "tailored_resume_path": (str(pack.resume_path)
+                                 if pack.resume_path else None),
+        "resume_keyword_coverage": (pack.resume.keyword_coverage
+                                    if pack.resume else None),
+        "artifacts": pack.artifacts,
+    })
 
 
 @app.tool()

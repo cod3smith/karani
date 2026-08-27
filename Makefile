@@ -107,7 +107,7 @@ slack-listen:
 # --- infrastructure (docker compose) ---
 
 infra-up:
-	docker compose up -d db
+	docker compose up -d db minio
 
 infra-up-llm:
 	docker compose --profile local-llm up -d

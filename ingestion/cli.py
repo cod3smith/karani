@@ -123,8 +123,8 @@ async def _digest(limit: int, fmt: str, output: str | None) -> int:
 async def _draft(job_id: int, provider: str | None, model: str | None,
                  resume_path: str, output_path: str | None) -> int:
     _configure_logging()
+    from drafting import build_application_pack
     from qualification import get_qualifier
-    from drafting import draft_for_job
 
     resume = ResumeProfile.from_file(resume_path)
     client = get_qualifier(provider=provider, model=model)
@@ -138,21 +138,30 @@ async def _draft(job_id: int, provider: str | None, model: str | None,
         if not row:
             print(f"ERROR: no job with id={job_id}", file=sys.stderr)
             return 2
-        pkg, path = await draft_for_job(
-            client, resume=resume.raw_markdown,
-            job_row=row, qualification=row.get("qualification"),
+        pack = await build_application_pack(
+            client, storage, job_row=row,
+            resume_markdown=resume.raw_markdown,
             output_path=output_path,
         )
-        # Bookkeeping: move to `drafting` + persist path and prompt/model
-        # provenance so funnel_stats can A/B drafts by version.
-        await storage.record_draft(job_id, str(path),
-                                   prompt_version=pkg.prompt_version,
-                                   model=pkg.model,
-                                   keyword_coverage=pkg.keyword_coverage)
-        print(f"drafted: {path}")
+        if pack.failed:
+            print("ERROR: draft failed (malformed LLM output); retry",
+                  file=sys.stderr)
+            return 1
+        pkg = pack.pkg
+        print(f"drafted: {pack.draft_path}")
         print(f"  cover_letter_words={len(pkg.cover_letter.split())} "
               f"bullets={len(pkg.tailored_bullets)} "
-              f"answers={len(pkg.application_answers)}")
+              f"answers={len(pkg.application_answers)} "
+              f"keyword_coverage={pkg.keyword_coverage}")
+        if pack.voice.get("after"):
+            print(f"  voice: {pack.voice['before']['score']} -> "
+                  f"{pack.voice['after']['score']} "
+                  f"(kept {pack.voice['kept']})")
+        if pack.resume_path and pack.resume and pack.resume.resume_markdown:
+            print(f"  tailored resume: {pack.resume_path} "
+                  f"(coverage={pack.resume.keyword_coverage})")
+        for name, meta in pack.artifacts.items():
+            print(f"  artifact: {name} -> {meta['url']}")
         return 0
     finally:
         await storage.close()

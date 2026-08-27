@@ -23,6 +23,7 @@ for _var in (
     "NOTION_TOKEN", "NOTION_DATABASE_ID",
     "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL",
     "LOCAL_LLM_BASE_URL", "MEM0_LLM_MODEL",
+    "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "MINIO_ENDPOINT",
 ):
     os.environ.pop(_var, None)
 os.environ["KARANI_MEMORY"] = "basic"

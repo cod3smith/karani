@@ -42,7 +42,7 @@ async def run_autopilot(
 ) -> AutopilotStats:
     """Draft + deliver packs for the top candidates, bounded twice:
     `max_drafts` per run AND `daily_cap` per UTC day across all runs."""
-    from drafting import draft_for_job
+    from drafting import build_application_pack
     from slackbridge.blocks import pack_blocks
 
     stats = AutopilotStats()
@@ -69,28 +69,26 @@ async def run_autopilot(
     for row in rows:
         job_id = row["id"]
         try:
-            pkg, path = await draft_for_job(
-                client, resume=resume.raw_markdown,
-                job_row=row, qualification=row.get("qualification"),
+            pack = await build_application_pack(
+                client, storage, job_row=row,
+                resume_markdown=resume.raw_markdown,
             )
-            if pkg.cover_letter.startswith("DRAFTING FAILED"):
+            if pack.failed:
                 # Malformed LLM output: never deliver a broken pack, and
                 # leave the job in the candidate pool so the next pass
-                # retries it.
+                # retries it (build_application_pack records nothing on
+                # failure).
                 stats.errors.append(f"job_id={job_id}: draft failed "
                                     f"(malformed LLM output); will retry")
                 continue
-            await storage.record_draft(
-                job_id, str(path),
-                prompt_version=pkg.prompt_version, model=pkg.model,
-                keyword_coverage=pkg.keyword_coverage,
-            )
             stats.drafted += 1
             await slack.post_message(
                 channel,
                 f"Application pack ready for review: "
                 f"{row.get('company_display')} — {row.get('title')}",
-                blocks=pack_blocks(row, pkg),
+                blocks=pack_blocks(row, pack.pkg,
+                                   artifacts=pack.artifacts,
+                                   voice=pack.voice),
             )
             stats.delivered += 1
             await maybe_sync_job(storage, job_id)

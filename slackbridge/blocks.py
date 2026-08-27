@@ -46,11 +46,12 @@ def _button(action_id: str, text: str, value: str,
     return b
 
 
-def pack_blocks(job_row: dict, pkg) -> list[dict]:
-    """An application pack for review: summary, cover letter, and the
-    review buttons. Karani drafts; the buttons drive Kelyn's flow — the
-    actual submission always happens on the company portal (non-goal:
-    never auto-submit)."""
+def pack_blocks(job_row: dict, pkg, *, artifacts: dict | None = None,
+                voice: dict | None = None) -> list[dict]:
+    """An application pack for review: summary, cover letter, artifact
+    links (tweak-and-submit), voice score, and the review buttons.
+    Karani drafts; the buttons drive Kelyn's flow — the actual submission
+    always happens on the company portal (non-goal: never auto-submit)."""
     job_id = job_row.get("id")
     company = job_row.get("company_display") or job_row.get("company") or ""
     letter = (pkg.cover_letter or "").strip()
@@ -58,15 +59,27 @@ def pack_blocks(job_row: dict, pkg) -> list[dict]:
         letter = letter[:2600] + "\n[truncated — full text in the draft file]"
     coverage = (f" · keyword coverage {pkg.keyword_coverage:.0%}"
                 if pkg.keyword_coverage is not None else "")
-    return [
+    voice_note = ""
+    if voice and voice.get("after"):
+        voice_note = f" · voice {voice['after'].get('score', '?')}/100"
+    blocks = [
         _header(f"Application pack — {company}"),
         _section(
             f"*[{job_id}]* {company} — {job_row.get('title', '')}\n"
             f"fit *{job_row.get('fit_score', '?')}* · {_comp(job_row)}"
-            f"{coverage} · <{job_row.get('apply_url')}|posting>\n"
+            f"{coverage}{voice_note} · <{job_row.get('apply_url')}|posting>\n"
             f"{len(pkg.tailored_bullets)} tailored bullets · "
             f"{len(pkg.application_answers)} answers in the draft file"
         ),
+    ]
+    if artifacts:
+        links = " · ".join(
+            f"<{meta['url']}|{name.replace('_', ' ').removesuffix('.md')}>"
+            for name, meta in artifacts.items() if meta.get("url")
+        )
+        if links:
+            blocks.append(_section(f"*Tweak and submit:* {links}"))
+    blocks += [
         _section(f"*Cover letter:*\n>>> {letter}"),
         {
             "type": "actions",
@@ -81,6 +94,7 @@ def pack_blocks(job_row: dict, pkg) -> list[dict]:
             ],
         },
     ]
+    return blocks
 
 
 def actions_blocks(buckets: dict) -> list[dict]:

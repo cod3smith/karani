@@ -196,27 +196,34 @@ async def _dispatch(cmd, args, storage, memory,
                 f"{stats.skipped} skip, {len(stats.errors)} errors.")
 
     if cmd == "draft":
-        from drafting import draft_for_job
+        from drafting import build_application_pack
         job_id = _need_id(args)
         row = await storage.get_job(job_id)
         if not row:
             return f"No job with id={job_id}."
-        pkg, path = await draft_for_job(
-            make_qualifier(), resume=load_resume().raw_markdown,
-            job_row=row, qualification=row.get("qualification"),
+        pack = await build_application_pack(
+            make_qualifier(), storage, job_row=row,
+            resume_markdown=load_resume().raw_markdown,
         )
-        await storage.record_draft(job_id, str(path),
-                                   prompt_version=pkg.prompt_version,
-                                   model=pkg.model,
-                                   keyword_coverage=pkg.keyword_coverage)
+        if pack.failed:
+            return "Draft failed (malformed LLM output) — try again."
         from notionsync import maybe_sync_job
         await maybe_sync_job(storage, job_id)
+        pkg = pack.pkg
         letter = pkg.cover_letter.strip()
         if len(letter) > 2600:
             letter = letter[:2600] + "\n[truncated — full text in the file]"
-        return (f"Drafted `{path}` — {len(pkg.cover_letter.split())} words, "
-                f"keyword coverage {pkg.keyword_coverage}.\n\n"
-                f"*Cover letter:*\n>>> {letter}")
+        links = " · ".join(
+            f"<{m['url']}|{n.replace('_', ' ').removesuffix('.md')}>"
+            for n, m in pack.artifacts.items() if m.get("url"))
+        voice = ""
+        if pack.voice.get("after"):
+            voice = f", voice {pack.voice['after']['score']}/100"
+        return (f"Drafted `{pack.draft_path}` — "
+                f"{len(pkg.cover_letter.split())} words, keyword coverage "
+                f"{pkg.keyword_coverage}{voice}."
+                + (f"\n*Tweak and submit:* {links}" if links else "")
+                + f"\n\n*Cover letter:*\n>>> {letter}")
 
     if cmd == "prep":
         from drafting import prep_for_job
