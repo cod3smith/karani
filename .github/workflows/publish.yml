@@ -1,0 +1,22 @@
+name: publish
+
+# Publishes to PyPI on a GitHub release, via PyPI Trusted Publishing
+# (OIDC) — no API token stored in repo secrets. One-time setup on
+# pypi.org: project karani -> Publishing -> add this repo + workflow.
+on:
+  release:
+    types: [published]
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Build
+        run: uv build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
