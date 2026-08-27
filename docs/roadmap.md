@@ -43,31 +43,14 @@ Treat as leaked.
 **Motivation:** HTML file on disk isn't a delivery surface. Kelyn needs
 to *see* it without opening a file manager.
 
-**Partially addressed (2026-08):** the MCP server (`mcp_server/`, ADR 0008)
-exposes `digest` / `shortlist` / `get_job` to any MCP client, so the daily
-review can happen inside Claude Code or Cowork without touching the HTML
-file. A push channel (email/Slack/artifact) is still open.
-
-**Options (pick one):**
-- **Email via SES/Sendgrid.** Simple, reliable, works offline.
-- **Cowork artifact.** Persistent, refreshable, ties into Cowork's
-  daily surface.
-- **Slack DM to self.** Works if Kelyn already lives in Slack.
-
-**Recommendation:** Cowork artifact first (highest fit with how Kelyn
-already works), email as fallback.
-
-**Steps:**
-1. `ingestion/digest.py` already renders HTML.
-2. Wire `cli.py digest --deliver cowork` to call
-   `mcp__cowork__create_artifact` with the rendered HTML.
-3. On subsequent runs, `mcp__cowork__update_artifact` instead of creating
-   a new one (dedupe by artifact ID stored in `data/.digest_artifact_id`).
-
-**Acceptance:** running `make digest` refreshes a persistent Cowork
-artifact that Kelyn can pin.
-
-**Effort:** half-day.
+**Shipped (2026-08):** Slack is the delivery channel — `notify` (CLI),
+`notify_slack` (MCP), and the two-way Socket Mode bridge
+(`python -m slackbridge`, ADR 0010) so Kelyn can react (`verdict 123
+apply`) and ask (`actions`, `prep 45`, `recall gitlab`) from the same
+thread the digest lands in. The MCP server (ADR 0008) remains the
+equivalent surface for MCP clients. Remaining: wire `notify` into the
+scheduled daily run (1.2); email stays a fallback option if Slack ever
+stops being where Kelyn lives.
 
 ## Tier 1.5 — Conversion intelligence
 
@@ -91,7 +74,13 @@ Buckets: review (fit + freshness ranked), to_draft, to_submit, follow_up
 (applied >= N days, no response). An orchestrating agent's loop is now
 "call next_actions, act, repeat".
 
-### 1.5.3 Warm-path finder
+### 1.5.3 Warm-path finder — PARTIAL (2026-08)
+
+Shipped: `intel/` dossiers surface public GitHub org members as warm-path
+candidates (`warm_paths` MCP tool, `warm` Slack command), and prep packs
+draft an opener per contact. Open: overlap-scoring against Kelyn's
+domains, blog-author and conference-talk sources, and the warm-vs-cold
+split in `funnel_stats`.
 
 **Motivation:** referrals/direct contact convert 5–10x better than portal
 submissions. Biggest single lever on response rate.
@@ -109,7 +98,11 @@ warm contact + note; `funnel_stats` gains a warm-vs-cold response split.
 
 **Effort:** 1–2 days.
 
-### 1.5.4 Freshness urgency
+### 1.5.4 Freshness urgency — SHIPPED (2026-08)
+
+Shipped: `fast_lane` flag on `next_actions` review items (fit >= 85,
+posted <= 3 days), surfaced in the Slack actions push. Open: response
+rate by posting-age split.
 
 **Motivation:** response odds decay hard with posting age; recruiters
 triage the first days of applicants.
@@ -124,7 +117,12 @@ triage the first days of applicants.
 
 **Effort:** 2 hours.
 
-### 1.5.5 Keyword-gap scoring on drafts
+### 1.5.5 Keyword-gap scoring on drafts — SHIPPED (2026-08)
+
+Shipped: `drafting/keywords.py` (curated vocab, word-boundary matched);
+resume gaps feed the draft prompt (`draft-v2`), final coverage persisted
+per application (`draft_keyword_coverage`) and compared responded-vs-
+silent in the funnel autopsy.
 
 **Motivation:** an ATS ranks the application before a human reads it.
 Deterministic, free, and turns "tailored" into a number.
@@ -141,7 +139,13 @@ correlate coverage vs response rate.
 
 **Effort:** half-day.
 
-### 1.5.6 Interview prep pack + question bank
+### 1.5.6 Interview prep pack + question bank — SHIPPED (2026-08)
+
+Shipped: `prep` (CLI/MCP/Slack) — company brief from the cached
+`company_intel` dossier, gap-derived likely questions with STAR answers,
+dossier-grounded questions to ask, warm openers. Question bank grows via
+`remember ... --kind question`; prep recalls it per company. Open:
+structured post-stage capture prompts.
 
 **Motivation:** once response rate rises, screen → onsite conversion is
 the next bottleneck. The qualifier's evidence-backed `gaps` are exactly
@@ -161,7 +165,10 @@ company-specific sources; screen → next-stage rate tracked before/after.
 
 **Effort:** 2 days (includes `company_intel` table, reused by 2.3 and 3.1).
 
-### 1.5.7 Rejection autopsy
+### 1.5.7 Rejection autopsy — SHIPPED (2026-08)
+
+Shipped: `funnel_stats.autopsy` — response rates by seniority and remote
+status plus keyword-coverage averages for responded vs silent.
 
 **Motivation:** ghosts and rejections carry structure (seniority band,
 comp tier, timezone, company stage) that should feed back into filtering
@@ -176,7 +183,10 @@ at least one actionable pattern surfaced from real data.
 
 **Effort:** half-day.
 
-### 1.5.8 Follow-up sequencing
+### 1.5.8 Follow-up sequencing — SHIPPED (2026-08)
+
+Shipped: `followup` (CLI/MCP/Slack) drafts a dossier-hooked note for
+applications `next_actions.follow_up` flags as due.
 
 **Motivation:** a specific, newsworthy follow-up resurrects a real
 fraction of silent applications. `next_actions.follow_up` already surfaces

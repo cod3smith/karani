@@ -102,6 +102,17 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS outcome_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS draft_path TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS draft_prompt_version TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS draft_model TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS draft_keyword_coverage REAL;
+
+-- Company intelligence cache — dossiers built from public probes (GitHub,
+-- Wikipedia, engineering blog). TTL-refreshed; consumed by agent-mode
+-- qualification, interview prep, and follow-up drafting.
+CREATE TABLE IF NOT EXISTS company_intel (
+    company_normalized TEXT PRIMARY KEY,
+    company_display TEXT NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    fetched_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- Memory ledger — the durable system of record for karani's memory layer.
 -- Distilled, human-readable facts ("Kelyn skips crypto companies", "GitLab
@@ -256,14 +267,20 @@ def _days_ago(ts: Any, now: datetime) -> int | None:
 
 
 def _action_item(row: dict, now: datetime) -> dict:
+    posted_days = _days_ago(row.get("posted_at"), now)
+    fit = row.get("fit_score")
     return {
         "id": row.get("id"),
         "company": row.get("company_display") or row.get("company"),
         "title": row.get("title"),
-        "fit_score": row.get("fit_score"),
+        "fit_score": fit,
         "apply_url": row.get("apply_url"),
-        "posted_days_ago": _days_ago(row.get("posted_at"), now),
+        "posted_days_ago": posted_days,
         "application_status": row.get("application_status"),
+        # Response odds decay fast with posting age: high fit + fresh post
+        # means apply TODAY, not this week.
+        "fast_lane": bool(fit is not None and fit >= 85
+                          and posted_days is not None and posted_days <= 3),
     }
 
 
@@ -392,6 +409,49 @@ def _aggregate_funnel(rows: list[dict]) -> dict:
         "by_source": by_source,
         "by_qualify_prompt": by_qual_prompt,
         "by_draft_prompt": by_draft_prompt,
+        "autopsy": _autopsy(rows),
+    }
+
+
+def _autopsy(rows: list[dict]) -> dict:
+    """Rejection/ghost autopsy: which attributes separate responders from
+    silence. Purely descriptive — findings become filter/positioning
+    adjustments by hand (roadmap 1.5.7)."""
+    by_seniority: dict[str, dict] = {}
+    by_remote: dict[str, dict] = {}
+    coverage_responded: list[float] = []
+    coverage_silent: list[float] = []
+
+    def bump(d: dict, key: str, responded: bool) -> None:
+        b = d.setdefault(key, {"applied": 0, "responded": 0})
+        b["applied"] += 1
+        b["responded"] += int(responded)
+
+    for r in rows:
+        responded = (r.get("application_status") in _RESPONDED_STATUSES
+                     or r.get("outcome") in _RESPONDED_OUTCOMES)
+        bump(by_seniority, r.get("seniority") or "unknown", responded)
+        bump(by_remote, r.get("remote_status") or "unknown", responded)
+        cov = r.get("draft_keyword_coverage")
+        if cov is not None:
+            (coverage_responded if responded else coverage_silent).append(cov)
+
+    def rates(d: dict) -> dict:
+        for b in d.values():
+            b["response_rate"] = (round(b["responded"] / b["applied"], 3)
+                                  if b["applied"] else 0.0)
+        return d
+
+    def avg(xs: list[float]) -> float | None:
+        return round(sum(xs) / len(xs), 3) if xs else None
+
+    return {
+        "by_seniority": rates(by_seniority),
+        "by_remote_status": rates(by_remote),
+        "keyword_coverage": {
+            "responded_avg": avg(coverage_responded),
+            "silent_avg": avg(coverage_silent),
+        },
     }
 
 
@@ -403,6 +463,7 @@ class Storage:
         self._next_id = 1
         self._memories: list[dict[str, Any]] = []
         self._next_memory_id = 1
+        self._company_intel: dict[str, dict[str, Any]] = {}
 
     async def connect(self) -> None:
         if not self.dsn:
@@ -674,11 +735,13 @@ class Storage:
     async def record_draft(
         self, job_id: int, path: str,
         prompt_version: str = "", model: str = "",
+        keyword_coverage: float | None = None,
     ) -> None:
         """A draft was generated: move to `drafting` and persist provenance.
 
-        `draft_prompt_version` is what makes draft A/B measurable in
-        `funnel_stats` — response rate by prompt version.
+        `draft_prompt_version` and `draft_keyword_coverage` are what make
+        drafts A/B-measurable in `funnel_stats` — response rate by prompt
+        version and by ATS keyword coverage.
         """
         if self.pool is None:
             for row in self._memory.values():
@@ -687,6 +750,7 @@ class Storage:
                     row["draft_path"] = path
                     row["draft_prompt_version"] = prompt_version
                     row["draft_model"] = model
+                    row["draft_keyword_coverage"] = keyword_coverage
                     return
             return
         async with self.pool.acquire() as conn:
@@ -696,10 +760,11 @@ class Storage:
                    SET application_status = 'drafting',
                        draft_path = $2,
                        draft_prompt_version = $3,
-                       draft_model = $4
+                       draft_model = $4,
+                       draft_keyword_coverage = $5
                  WHERE id = $1
                 """,
-                job_id, path, prompt_version, model,
+                job_id, path, prompt_version, model, keyword_coverage,
             )
 
     async def add_stage(self, job_id: int, stage: str, notes: str = "") -> None:
@@ -806,8 +871,9 @@ class Storage:
             async with self.pool.acquire() as conn:
                 records = await conn.fetch(
                     """
-                    SELECT source, fit_score, qualification,
-                           draft_prompt_version, application_status, outcome
+                    SELECT source, fit_score, qualification, seniority,
+                           remote_status, draft_prompt_version,
+                           draft_keyword_coverage, application_status, outcome
                       FROM jobs
                      WHERE applied_at IS NOT NULL
                     """
@@ -837,6 +903,50 @@ class Storage:
                 limit,
             )
             return [dict(r) for r in rows]
+
+    # --- Company intel cache (see intel/) ---
+
+    async def get_company_intel(self, company: str) -> dict | None:
+        """Cached dossier for a company, with `fetched_at` for TTL checks."""
+        normalized = _company_normalize(company)
+        if self.pool is None:
+            row = self._company_intel.get(normalized)
+            return dict(row) if row else None
+        async with self.pool.acquire() as conn:
+            r = await conn.fetchrow(
+                "SELECT company_display, payload, fetched_at "
+                "FROM company_intel WHERE company_normalized = $1",
+                normalized,
+            )
+            if not r:
+                return None
+            payload = r["payload"]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            return {"company_display": r["company_display"],
+                    "payload": payload, "fetched_at": r["fetched_at"]}
+
+    async def save_company_intel(self, company: str, payload: dict) -> None:
+        normalized = _company_normalize(company)
+        if self.pool is None:
+            self._company_intel[normalized] = {
+                "company_display": company, "payload": payload,
+                "fetched_at": datetime.now(timezone.utc),
+            }
+            return
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO company_intel
+                    (company_normalized, company_display, payload, fetched_at)
+                VALUES ($1, $2, $3::jsonb, NOW())
+                ON CONFLICT (company_normalized) DO UPDATE SET
+                    company_display = EXCLUDED.company_display,
+                    payload = EXCLUDED.payload,
+                    fetched_at = NOW()
+                """,
+                normalized, company, json.dumps(payload, default=str),
+            )
 
     # --- Memory ledger (see docs/memory.md) ---
 

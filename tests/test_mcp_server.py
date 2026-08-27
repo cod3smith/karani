@@ -98,7 +98,8 @@ async def test_tool_listing():
     assert tools == {
         "ingest", "sweep", "discover", "qualify", "digest", "shortlist",
         "get_job", "pipeline_stats", "next_actions", "funnel_stats",
-        "draft", "record_verdict", "set_status", "add_stage",
+        "draft", "prep", "draft_followup", "company_intel", "warm_paths",
+        "notify_slack", "record_verdict", "set_status", "add_stage",
         "record_outcome", "remember", "recall",
     }
 
@@ -199,6 +200,87 @@ async def test_record_verdict_writes_memory(storage):
     found = await _call("recall", {"query": "GitLab Senior Backend Engineer"})
     assert found["count"] == 1
     assert "verdict 'apply'" in found["memories"][0]["content"]
+
+
+@pytest.fixture
+def fake_intel(monkeypatch):
+    async def fake_get(storage, company, **kw):
+        return {"company_display": company, "cached": True,
+                "fetched_at": None,
+                "payload": {"wikipedia": f"{company} background.",
+                            "github": "repos",
+                            "warm_candidates": [
+                                {"login": "alice",
+                                 "url": "https://github.com/alice",
+                                 "source": "github_org_member"}]}}
+
+    import intel.service
+    monkeypatch.setattr(intel.service, "get_company_intel", fake_get)
+    monkeypatch.setattr("intel.get_company_intel", fake_get)
+
+
+@pytest.mark.asyncio
+async def test_company_intel_and_warm_paths_tools(storage, fake_intel):
+    dossier = await _call("company_intel", {"company": "GitLab"})
+    assert dossier["cached"] is True
+    assert "GitLab background" in dossier["dossier"]
+    assert dossier["warm_candidates"][0]["login"] == "alice"
+
+    paths = await _call("warm_paths", {"company": "GitLab"})
+    assert paths["count"] == 1
+    assert paths["candidates"][0]["login"] == "alice"
+
+
+@pytest.mark.asyncio
+async def test_prep_and_followup_tools(storage, fake_intel, monkeypatch,
+                                       tmp_path):
+    import os
+    monkeypatch.chdir(tmp_path)  # drafts/ lands in tmp
+    job_id = await _seed(storage)
+
+    prep_json = json.dumps({
+        "company_brief": "brief", "likely_questions": [],
+        "questions_to_ask": [{"question": "About the alice repo?",
+                              "source_basis": "github"}],
+        "warm_openers": [], "positioning_reminder": "",
+    })
+    monkeypatch.setattr(srv, "_make_qualifier",
+                        lambda p, m: ScriptedLLM(prep_json))
+    prep = await _call("prep", {"job_id": job_id})
+    assert prep["questions_to_ask"] == ["About the alice repo?"]
+    assert os.path.exists(prep["path"])
+
+    fu_json = json.dumps({"note": "Saw the release land.",
+                          "subject_line": "s", "hook_used": "release"})
+    monkeypatch.setattr(srv, "_make_qualifier",
+                        lambda p, m: ScriptedLLM(fu_json))
+    fu = await _call("draft_followup", {"job_id": job_id})
+    assert fu["hook_used"] == "release"
+    assert os.path.exists(fu["path"])
+
+
+@pytest.mark.asyncio
+async def test_notify_slack_tool(storage, monkeypatch):
+    posts = []
+
+    class StubSlack:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def post_message(self, channel, text, blocks=None, **kw):
+            posts.append({"channel": channel, "text": text, "blocks": blocks})
+            return {"ok": True}
+
+    import slackbridge
+    monkeypatch.setattr(slackbridge, "SlackClient", StubSlack)
+    monkeypatch.setenv("SLACK_CHANNEL", "D42")
+    result = await _call("notify_slack", {"kind": "actions"})
+    assert result["channel"] == "D42"
+    assert posts and posts[0]["blocks"]
+
+    monkeypatch.delenv("SLACK_CHANNEL")
+    with pytest.raises(ToolError, match="SLACK_CHANNEL not set"):
+        await srv.app.call_tool("notify_slack", {"kind": "digest"})
 
 
 @pytest.mark.asyncio

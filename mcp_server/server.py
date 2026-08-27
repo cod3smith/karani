@@ -319,7 +319,8 @@ async def draft(
     )
     await storage.record_draft(job_id, str(path),
                                prompt_version=pkg.prompt_version,
-                               model=pkg.model)
+                               model=pkg.model,
+                               keyword_coverage=pkg.keyword_coverage)
     return {
         "path": str(path),
         "cover_letter_words": len(pkg.cover_letter.split()),
@@ -327,7 +328,145 @@ async def draft(
         "application_answers": len(pkg.application_answers),
         "subject_line": pkg.subject_line,
         "model": pkg.model,
+        "keyword_coverage": pkg.keyword_coverage,
+        "keyword_missing": pkg.keyword_missing,
     }
+
+
+@app.tool()
+async def prep(
+    job_id: int,
+    provider: str | None = None,
+    model: str | None = None,
+    resume_path: str | None = None,
+) -> dict:
+    """Interview prep pack for a job in the pipeline: company brief from
+    the cached dossier, likely questions derived from the qualifier's gap
+    analysis (with STAR answers from the resume), specific questions to
+    ask grounded in company data, and warm-path openers. Writes
+    drafts/prep_<id>_<company>.md. Billed (one LLM call)."""
+    from drafting import prep_for_job
+    from intel import dossier_text, get_company_intel
+
+    storage = await _get_storage()
+    row = await storage.get_job(job_id)
+    if row is None:
+        raise ToolError(f"no job with id={job_id}")
+    company = row.get("company_display") or row.get("company") or ""
+    intel = await get_company_intel(storage, company)
+    memory = await _get_memory()
+    bank = [m["content"] for m in await memory.recall(
+        f"{company} interview questions", kind="question", limit=10)]
+    pkg, path = await prep_for_job(
+        _make_qualifier(provider, model),
+        resume=_load_resume(resume_path).raw_markdown,
+        job_row=row, qualification=row.get("qualification"),
+        dossier=dossier_text(intel), question_bank=bank,
+    )
+    return _jsonable({
+        "path": str(path),
+        "company_brief": pkg.company_brief,
+        "likely_questions": len(pkg.likely_questions),
+        "questions_to_ask": [q.question for q in pkg.questions_to_ask],
+        "warm_openers": len(pkg.warm_openers),
+    })
+
+
+@app.tool()
+async def draft_followup(
+    job_id: int,
+    provider: str | None = None,
+    model: str | None = None,
+) -> dict:
+    """Draft a follow-up note for an application gone quiet, hooked on a
+    specific fact from the company dossier. Karani drafts; the user sends.
+    Writes drafts/followup_<id>_<company>.md. Billed (one LLM call)."""
+    from datetime import datetime, timezone
+
+    from drafting import followup_for_job
+    from ingestion.storage import _days_ago
+    from intel import dossier_text, get_company_intel
+
+    storage = await _get_storage()
+    row = await storage.get_job(job_id)
+    if row is None:
+        raise ToolError(f"no job with id={job_id}")
+    company = row.get("company_display") or row.get("company") or ""
+    intel = await get_company_intel(storage, company)
+    days = _days_ago(row.get("applied_at"), datetime.now(timezone.utc)) or 0
+    pkg, path = await followup_for_job(
+        _make_qualifier(provider, model), job_row=row,
+        days_since_applied=days, dossier=dossier_text(intel),
+    )
+    return {"path": str(path), "note": pkg.note,
+            "subject_line": pkg.subject_line, "hook_used": pkg.hook_used}
+
+
+@app.tool()
+async def company_intel(company: str, force_refresh: bool = False) -> dict:
+    """Cached public-signal dossier for a company: background, engineering
+    presence (GitHub), and warm-path candidates. TTL-refreshed (14 days);
+    reused by prep, follow-up, and agent-mode qualification."""
+    from intel import dossier_text, get_company_intel as fetch_intel
+
+    storage = await _get_storage()
+    intel = await fetch_intel(storage, company, force_refresh=force_refresh)
+    return _jsonable({
+        "company": company,
+        "cached": intel.get("cached", False),
+        "fetched_at": intel.get("fetched_at"),
+        "dossier": dossier_text(intel),
+        "warm_candidates": intel["payload"].get("warm_candidates", []),
+    })
+
+
+@app.tool()
+async def warm_paths(company: str) -> dict:
+    """Warm-path candidates at a company — engineers with a public
+    presence (currently: public GitHub org members). Referrals and direct
+    contact convert far better than cold portal applications; karani
+    surfaces candidates, the user decides whom to contact."""
+    from intel import find_warm_paths
+
+    storage = await _get_storage()
+    paths = await find_warm_paths(storage, company)
+    return _jsonable({"company": company, "count": len(paths),
+                      "candidates": paths})
+
+
+@app.tool()
+async def notify_slack(kind: str = "digest", limit: int = 10) -> dict:
+    """Push the digest or the next-actions worklist to the configured
+    Slack channel (SLACK_CHANNEL + SLACK_BOT_TOKEN). kind: digest |
+    actions."""
+    import os
+
+    from slackbridge import SlackClient, SlackError
+    from slackbridge.blocks import actions_blocks, digest_blocks
+
+    if kind not in ("digest", "actions"):
+        raise ToolError("kind must be digest or actions")
+    channel = os.getenv("SLACK_CHANNEL", "")
+    if not channel:
+        raise ToolError("SLACK_CHANNEL not set")
+    storage = await _get_storage()
+    try:
+        slack = SlackClient()
+        if kind == "digest":
+            rows = await storage.top_qualified(limit=limit)
+            await slack.post_message(
+                channel, f"karani digest: {len(rows)} role(s)",
+                blocks=digest_blocks(rows, limit=limit),
+            )
+            count = len(rows)
+        else:
+            buckets = await storage.next_actions(review_limit=limit)
+            await slack.post_message(channel, "karani: next actions",
+                                     blocks=actions_blocks(buckets))
+            count = sum(len(v) for v in buckets.values())
+    except SlackError as e:
+        raise ToolError(str(e)) from e
+    return {"kind": kind, "channel": channel, "items": count}
 
 
 # -----------------------  feedback + state machine  -----------------------

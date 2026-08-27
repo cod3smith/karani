@@ -32,3 +32,6 @@ class DraftPackage(BaseModel):
     prompt_version: str = ""
     job_id: int = 0
     verdict_at_draft: Literal["qualified", "maybe", "skip", "unknown"] = "unknown"
+    # ATS keyword coverage of the final materials (see keywords.py).
+    keyword_coverage: float | None = None
+    keyword_missing: list[str] = Field(default_factory=list)

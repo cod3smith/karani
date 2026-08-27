@@ -36,6 +36,13 @@ background). It:
 9. **Remembers** distilled facts (preferences, company intel, outcomes)
    in a ledger-first memory layer (`memory/`) and injects them into
    qualification. mem0 + pgvector optional upgrade. See `docs/memory.md`.
+10. **Converses** over Slack (`slackbridge/`, Socket Mode): pushes the
+    digest/worklist and takes the same verbs back (`verdict 123 apply`,
+    `prep 45`). See `docs/adrs/0010-slack-two-way-surface.md`.
+11. **Converts**: fast-lane flags on fresh high-fit roles, ATS keyword
+    coverage per draft, cached company dossiers (`intel/`), warm-path
+    candidates, interview prep packs, and dossier-hooked follow-ups —
+    all measured through `funnel_stats` (roadmap Tier 1.5).
 
 **Positioning:** target *companies that hire globally at SF pay bands
 regardless of candidate location*. Everything downstream assumes that thesis.
@@ -82,17 +89,29 @@ karani/
 │   ├── agent.py                     ← tool-using multi-turn loop
 │   └── runner.py                    ← qualify_pending() orchestration
 │
-├── drafting/                        ← cover letter + bullets + Q&A
+├── drafting/                        ← cover letter + bullets + Q&A + prep + follow-up
 │   ├── models.py                    ← DraftPackage
 │   ├── prompts.py                   ← versioned drafting prompt
+│   ├── keywords.py                  ← deterministic ATS keyword-gap scoring
+│   ├── prep.py                      ← interview prep pack (prep-v*)
+│   ├── followup.py                  ← dossier-hooked follow-up notes (followup-v*)
 │   ├── writers.py                   ← markdown emitter
 │   └── runner.py                    ← draft_for_job()
+│
+├── intel/                           ← cached company dossiers + warm paths
+│   └── service.py                   ← probes → company_intel table (TTL 14d)
+│
+├── slackbridge/                     ← two-way Slack surface (ADR 0010)
+│   ├── client.py                    ← Web API via httpx (push; no SDK)
+│   ├── blocks.py                    ← Block Kit for digest/actions pushes
+│   ├── commands.py                  ← inbound verb dispatcher (thin adapter)
+│   └── listener.py                  ← Socket Mode daemon (`--extra slack`)
 │
 ├── memory/                          ← memory layer (docs/memory.md)
 │   └── manager.py                   ← MemoryManager: off | basic | mem0 modes
 │
 ├── mcp_server/                      ← MCP interface (stdio) over the pipeline
-│   ├── server.py                    ← MCPServer `app` + 17 tools; thin adapter
+│   ├── server.py                    ← MCPServer `app` + 22 tools; thin adapter
 │   └── __main__.py                  ← `python -m mcp_server` / `make mcp`
 │
 ├── docker-compose.yml               ← dedicated infra: pgvector Postgres (+ Ollama profile)
@@ -104,7 +123,7 @@ karani/
 │
 ├── drafts/                          ← generated cover letters + tailored bullets
 │
-├── tests/                           ← pytest suite (89+ tests, all deterministic)
+├── tests/                           ← pytest suite (121+ tests, all deterministic)
 │   ├── conftest.py
 │   ├── test_{filters,roles,storage,qualification,agent,drafting,digest,discovery}.py
 │   ├── test_e2e_pipeline.py         ← mocked-HTTP end-to-end integration test
@@ -240,7 +259,7 @@ Full details in `docs/conventions.md`. The one-liners:
 
 - Run: `make test` or `pytest tests -q`.
 - Every new module needs a smoke test at minimum.
-- All 89 existing tests are deterministic (no network, no clock). Keep it
+- All 121 existing tests are deterministic (no network, no clock). Keep it
   that way — use fake clients for LLM calls (see `tests/test_qualification.py`
   and `tests/test_agent.py`), and `httpx.MockTransport` for HTTP (see
   `tests/test_e2e_pipeline.py`).

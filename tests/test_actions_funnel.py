@@ -78,6 +78,38 @@ async def test_next_actions_review_ranked_by_fit_then_freshness():
 
 
 @pytest.mark.asyncio
+async def test_fast_lane_flags_fresh_high_fit():
+    storage = Storage("")
+    await storage.connect()
+    fresh_high = await _seed(storage, "1", verdict="qualified", fit_score=90)
+    stale_high = await _seed(storage, "2", verdict="qualified", fit_score=90,
+                             posted_at=NOW - timedelta(days=10))
+    fresh_low = await _seed(storage, "3", verdict="qualified", fit_score=70)
+    buckets = await storage.next_actions(now=NOW)
+    flags = {a["id"]: a["fast_lane"] for a in buckets["review"]}
+    assert flags[fresh_high] is True
+    assert flags[stale_high] is False   # high fit, but response odds decayed
+    assert flags[fresh_low] is False    # fresh, but not worth same-day rush
+
+
+@pytest.mark.asyncio
+async def test_autopsy_separates_responders_from_silence():
+    storage = Storage("")
+    await storage.connect()
+    await _seed(storage, "1", application_status="interview", applied_at=NOW,
+                seniority="senior", remote_status="remote",
+                draft_keyword_coverage=0.9)
+    await _seed(storage, "2", application_status="applied", applied_at=NOW,
+                outcome="ghosted", seniority="staff", remote_status="remote",
+                draft_keyword_coverage=0.4)
+    autopsy = (await storage.funnel_stats())["autopsy"]
+    assert autopsy["by_seniority"]["senior"]["response_rate"] == 1.0
+    assert autopsy["by_seniority"]["staff"]["response_rate"] == 0.0
+    assert autopsy["keyword_coverage"] == {"responded_avg": 0.9,
+                                           "silent_avg": 0.4}
+
+
+@pytest.mark.asyncio
 async def test_funnel_stats_rates_and_splits():
     storage = Storage("")
     await storage.connect()

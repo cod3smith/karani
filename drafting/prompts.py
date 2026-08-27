@@ -1,7 +1,9 @@
 """Drafting prompt. Single-turn structured JSON output."""
 from __future__ import annotations
 
-DRAFT_PROMPT_VERSION = "draft-v1"
+# v2: <keyword_targets> block — JD terms the resume misses, for honest
+# inclusion (ATS coverage; see keywords.py).
+DRAFT_PROMPT_VERSION = "draft-v2"
 
 SYSTEM_PROMPT = """\
 You are a job-application copilot writing in the candidate's voice for a
@@ -39,6 +41,13 @@ Rules of tailoring:
   specific screener questions, use those verbatim.
 - Each answer 80–250 words. First-person, concrete, cite resume material.
 
+Rules of ATS coverage:
+- The <keyword_targets> block lists technical terms from the JD that the
+  candidate's materials don't yet mention. Work each one in ONLY where the
+  resume gives honest grounds to claim it — a term the candidate has no
+  real experience with must be left out, not faked. Prefer weaving terms
+  into tailored bullets and answers over stuffing the cover letter.
+
 Return a SINGLE JSON object matching the schema below and NOTHING else.
 """
 
@@ -61,6 +70,10 @@ USER_PROMPT_TEMPLATE = """\
 </description>
 </job>
 
+<keyword_targets>
+{keyword_targets}
+</keyword_targets>
+
 Return this JSON and nothing else:
 
 {{
@@ -80,7 +93,10 @@ Return this JSON and nothing else:
 """
 
 
-def build_user_prompt(*, resume: str, qualification: str, job_row: dict) -> str:
+def build_user_prompt(
+    *, resume: str, qualification: str, job_row: dict,
+    keyword_targets: list[str] | None = None,
+) -> str:
     lo = job_row.get("comp_min_usd")
     hi = job_row.get("comp_max_usd")
     comp = f"${lo:,}–${hi:,}" if lo and hi else (f"${lo:,}+" if lo else "not disclosed")
@@ -92,4 +108,6 @@ def build_user_prompt(*, resume: str, qualification: str, job_row: dict) -> str:
         location=job_row.get("location_raw") or "",
         comp=comp,
         description=(job_row.get("description_text") or "")[:10000],
+        keyword_targets="\n".join(f"- {t}" for t in keyword_targets)
+        if keyword_targets else "(none — resume already covers the JD's terms)",
     )

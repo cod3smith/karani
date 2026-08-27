@@ -12,7 +12,7 @@ DIGEST_LIMIT ?= 20
 DIGEST_OUT ?= data/digest.html
 
 .PHONY: help ingest qualify digest daily agent discover status stats sweep test mcp actions funnel \
-        infra-up infra-up-llm infra-down infra-logs infra-psql
+        notify slack-listen infra-up infra-up-llm infra-down infra-logs infra-psql
 
 help:
 	@echo "targets:"
@@ -65,6 +65,12 @@ test:
 
 mcp:
 	$(PY) -m mcp_server
+
+notify:
+	$(PY) -m ingestion.cli notify --kind digest
+
+slack-listen:
+	$(PY) -m slackbridge
 
 # --- infrastructure (docker compose) ---
 

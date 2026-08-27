@@ -109,6 +109,37 @@ Public surface:
 - `draft_for_job(client, resume, job_row, qualification)` → `(DraftPackage, Path)`
 - `DraftPackage` pydantic model
 
+Additional surfaces in `drafting/`: `keywords.py` (deterministic ATS
+keyword-gap scoring — resume gaps feed the draft prompt, final coverage
+persists to `draft_keyword_coverage`), `prep.py` (interview prep pack:
+gap-derived questions + dossier-grounded questions to ask), and
+`followup.py` (dossier-hooked notes for silent applications).
+
+### `intel/`
+
+Cached company dossiers: public probes (GitHub org, Wikipedia, public
+org members as warm-path candidates) → `company_intel` table, TTL 14
+days. One fetch, many consumers (prep, follow-up, agent tools). Probes
+are tolerant — a dead probe degrades the dossier, never raises.
+
+Public surface:
+- `get_company_intel(storage, company, force_refresh=False)` → dossier
+- `find_warm_paths(storage, company)` → candidate list
+- `dossier_text(intel)` → prompt-ready rendering
+
+### `slackbridge/`
+
+The two-way Slack surface (ADR 0010). Push half (`SlackClient`,
+`blocks.py`) is httpx-only and works in cron; pull half (`listener.py`,
+Socket Mode) needs `uv sync --extra slack`. `commands.py` maps inbound
+verbs onto the same Storage/runner/memory calls as the CLI and MCP
+server — third thin adapter, same sync rule.
+
+Public surface:
+- `SlackClient.post_message(channel, text, blocks)`
+- `handle_command(text, storage=..., memory=...)` → mrkdwn reply
+- `python -m slackbridge` — the listener daemon
+
 ### `memory/`
 
 The memory layer (full doc: `docs/memory.md`, decision: ADR 0009).
@@ -129,7 +160,7 @@ Public surface:
 ### `mcp_server/`
 
 The interactive interface layer — an MCP server (official `mcp` SDK 2.x,
-stdio) exposing 17 tools that map 1:1 onto the CLI verbs. Strictly a thin
+stdio) exposing 22 tools that map 1:1 onto the CLI verbs. Strictly a thin
 adapter: tools call the same runners and `Storage` methods the CLI calls,
 and hold no business logic of their own. Storage is a lazily-connected
 process-wide singleton so the in-memory fallback keeps state across tool

@@ -127,10 +127,48 @@ Tools map 1:1 onto the CLI verbs:
 | `next_actions` | prioritized worklist: review, draft, submit, follow up |
 | `funnel_stats` | response/interview/offer rates by fit band, source, prompt version |
 | `remember`, `recall` | teach/query the memory layer (see below) |
+| `prep`, `draft_followup` | interview prep pack; dossier-hooked follow-up note (billed) |
+| `company_intel`, `warm_paths` | cached public dossier; warm-path candidates |
+| `notify_slack` | push digest or actions to Slack |
 
 Storage is shared across tool calls (Postgres via `DATABASE_URL`, or the
 in-memory fallback for a scratch session). See
 `docs/adrs/0008-mcp-server-interface.md` for the design.
+
+## Slack (two-way)
+
+Karani pushes to Slack and takes commands back — full design in ADR 0010.
+
+```bash
+python -m ingestion.cli notify --kind digest    # push the shortlist
+python -m ingestion.cli notify --kind actions   # push the worklist
+make slack-listen                               # two-way bridge (Socket Mode)
+```
+
+In the channel/DM, reply with the same verbs the CLI has: `actions`,
+`digest`, `verdict 123 apply`, `status 123 applied`, `draft 123`,
+`prep 123`, `followup 123`, `intel GitLab`, `warm GitLab`,
+`remember <fact>`, `recall <query>`, `help`.
+
+Setup: a Slack app with Socket Mode on (`SLACK_APP_TOKEN`), bot scopes
+`chat:write` + `im:history` (`SLACK_BOT_TOKEN`), event subscription
+`message.im`, and the target conversation id in `SLACK_CHANNEL`. Pushes
+need only the bot token; the listener additionally needs
+`uv sync --extra slack`.
+
+## Conversion intelligence
+
+The funnel is `application → response → screen → onsite → offer`; every
+feature targets a stage (see roadmap Tier 1.5). `funnel` shows the rates
+plus an autopsy (response rate by seniority/remote status, keyword
+coverage responded-vs-silent). Fast-lane roles (fit >= 85, posted <= 3
+days) are flagged in `actions` — apply same-day. Drafts get a
+deterministic ATS keyword pass (`drafting/keywords.py`): JD terms the
+resume misses feed the prompt, final coverage is persisted per
+application. `prep <id>` builds an interview pack (company brief,
+gap-derived questions with STAR answers, dossier-grounded questions to
+ask, warm-path openers); `followup <id>` drafts a note hooked on a fresh
+company fact; `intel <company>` shows the cached dossier behind both.
 
 ## Memory
 

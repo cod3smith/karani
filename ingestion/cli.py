@@ -1,5 +1,6 @@
-"""CLI entry: `python -m ingestion.cli {run,qualify,digest,draft,verdict,
-status,stage,outcome,discover,stats,actions,funnel,remember,recall,sweep}`"""
+"""CLI entry: `python -m ingestion.cli {run,qualify,digest,draft,prep,
+followup,intel,notify,verdict,status,stage,outcome,discover,stats,actions,
+funnel,remember,recall,sweep}`"""
 from __future__ import annotations
 
 import argparse
@@ -146,7 +147,8 @@ async def _draft(job_id: int, provider: str | None, model: str | None,
         # provenance so funnel_stats can A/B drafts by version.
         await storage.record_draft(job_id, str(path),
                                    prompt_version=pkg.prompt_version,
-                                   model=pkg.model)
+                                   model=pkg.model,
+                                   keyword_coverage=pkg.keyword_coverage)
         print(f"drafted: {path}")
         print(f"  cover_letter_words={len(pkg.cover_letter.split())} "
               f"bullets={len(pkg.tailored_bullets)} "
@@ -262,6 +264,122 @@ async def _funnel() -> int:
     finally:
         await storage.close()
     return 0
+
+
+# -----------------------  prep / followup / intel / notify  -----------------------
+
+async def _prep(job_id: int, provider: str | None, model: str | None,
+                resume_path: str) -> int:
+    _configure_logging()
+    from drafting import prep_for_job
+    from intel import dossier_text, get_company_intel
+    from memory import MemoryManager
+    from qualification import get_qualifier
+
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        row = await storage.get_job(job_id)
+        if not row:
+            print(f"ERROR: no job with id={job_id}", file=sys.stderr)
+            return 2
+        company = row.get("company_display") or row.get("company") or ""
+        intel = await get_company_intel(storage, company)
+        memory = MemoryManager(storage)
+        bank = [m["content"] for m in await memory.recall(
+            f"{company} interview questions", kind="question", limit=10)]
+        pkg, path = await prep_for_job(
+            get_qualifier(provider=provider, model=model),
+            resume=ResumeProfile.from_file(resume_path).raw_markdown,
+            job_row=row, qualification=row.get("qualification"),
+            dossier=dossier_text(intel), question_bank=bank,
+        )
+        print(f"prep pack: {path}")
+        print(f"  likely_questions={len(pkg.likely_questions)} "
+              f"questions_to_ask={len(pkg.questions_to_ask)} "
+              f"warm_openers={len(pkg.warm_openers)}")
+        return 0
+    finally:
+        await storage.close()
+
+
+async def _followup(job_id: int, provider: str | None, model: str | None) -> int:
+    _configure_logging()
+    from datetime import datetime, timezone
+
+    from drafting import followup_for_job
+    from intel import dossier_text, get_company_intel
+    from qualification import get_qualifier
+
+    from .storage import _days_ago
+
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        row = await storage.get_job(job_id)
+        if not row:
+            print(f"ERROR: no job with id={job_id}", file=sys.stderr)
+            return 2
+        company = row.get("company_display") or row.get("company") or ""
+        intel = await get_company_intel(storage, company)
+        days = _days_ago(row.get("applied_at"),
+                         datetime.now(timezone.utc)) or 0
+        pkg, path = await followup_for_job(
+            get_qualifier(provider=provider, model=model),
+            job_row=row, days_since_applied=days,
+            dossier=dossier_text(intel),
+        )
+        print(f"follow-up note: {path}")
+        print(f"  hook: {pkg.hook_used or '(none)'}")
+        return 0
+    finally:
+        await storage.close()
+
+
+async def _intel(company: str, refresh: bool) -> int:
+    _configure_logging()
+    from intel import dossier_text, get_company_intel
+
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        intel = await get_company_intel(storage, company,
+                                        force_refresh=refresh)
+        print(f"cached={intel.get('cached', False)}")
+        print(dossier_text(intel))
+        return 0
+    finally:
+        await storage.close()
+
+
+async def _notify(kind: str, limit: int) -> int:
+    _configure_logging()
+    import os
+
+    from slackbridge import SlackClient
+    from slackbridge.blocks import actions_blocks, digest_blocks
+
+    channel = os.getenv("SLACK_CHANNEL", "")
+    if not channel:
+        print("ERROR: SLACK_CHANNEL not set", file=sys.stderr)
+        return 2
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        slack = SlackClient()
+        if kind == "digest":
+            rows = await storage.top_qualified(limit=limit)
+            blocks = digest_blocks(rows, limit=limit)
+            fallback = f"karani digest: {len(rows)} role(s)"
+        else:
+            buckets = await storage.next_actions(review_limit=limit)
+            blocks = actions_blocks(buckets)
+            fallback = "karani: next actions"
+        await slack.post_message(channel, fallback, blocks=blocks)
+        print(f"pushed {kind} to {channel}")
+        return 0
+    finally:
+        await storage.close()
 
 
 # -----------------------  remember / recall  -----------------------
@@ -422,6 +540,27 @@ def main() -> None:
 
     sub.add_parser("funnel", help="conversion funnel: response/interview/offer rates")
 
+    pr = sub.add_parser("prep", help="interview prep pack: brief + questions + warm openers")
+    pr.add_argument("job_id", type=int)
+    pr.add_argument("--provider", type=str, default=None,
+                    choices=[None, "openrouter", "anthropic", "local"])
+    pr.add_argument("--model", type=str, default=None)
+    pr.add_argument("--resume", type=str, default=DEFAULT_RESUME_PATH)
+
+    fu = sub.add_parser("followup", help="draft a follow-up note for a silent application")
+    fu.add_argument("job_id", type=int)
+    fu.add_argument("--provider", type=str, default=None,
+                    choices=[None, "openrouter", "anthropic", "local"])
+    fu.add_argument("--model", type=str, default=None)
+
+    it = sub.add_parser("intel", help="company dossier from public probes (cached)")
+    it.add_argument("company", type=str)
+    it.add_argument("--refresh", action="store_true")
+
+    nt = sub.add_parser("notify", help="push digest or actions to Slack")
+    nt.add_argument("--kind", choices=["digest", "actions"], default="digest")
+    nt.add_argument("--limit", type=int, default=10)
+
     rm = sub.add_parser("remember", help="store a fact in the memory layer")
     rm.add_argument("content", type=str)
     rm.add_argument("--kind", default="preference",
@@ -468,6 +607,16 @@ def main() -> None:
         sys.exit(asyncio.run(_actions(args.review_limit, args.follow_up_days)))
     elif args.cmd == "funnel":
         sys.exit(asyncio.run(_funnel()))
+    elif args.cmd == "prep":
+        sys.exit(asyncio.run(_prep(args.job_id, args.provider, args.model,
+                                   args.resume)))
+    elif args.cmd == "followup":
+        sys.exit(asyncio.run(_followup(args.job_id, args.provider,
+                                       args.model)))
+    elif args.cmd == "intel":
+        sys.exit(asyncio.run(_intel(args.company, args.refresh)))
+    elif args.cmd == "notify":
+        sys.exit(asyncio.run(_notify(args.kind, args.limit)))
     elif args.cmd == "remember":
         sys.exit(asyncio.run(_remember(args.content, args.kind, args.company)))
     elif args.cmd == "recall":
