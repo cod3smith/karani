@@ -24,3 +24,7 @@ data/resume.md
 data/digest.html
 drafts/
 logs/
+
+# Personal hunt configuration — karani.example.toml ships in the wheel
+karani.toml
+.env.backup

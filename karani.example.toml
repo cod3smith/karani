@@ -1,0 +1,45 @@
+# karani.toml — what to hunt, which providers, which endpoints.
+# Secrets NEVER live here: API keys and tokens go in .env / environment.
+# Docs: CONTRIBUTING.md and docs/adrs/0015. Re-judge stored roles after
+# edits with: karani refilter
+version = 1
+
+[profile]
+roles = ["software_engineering", "ml_ai", "research"]
+seniority = ["senior", "staff", "principal", "lead"]
+must_have_any = ["python", "typescript", "go", "rust"]
+exclude_titles = []
+
+[positioning]
+based_in = "City, Country"
+candidate = "a senior software engineer"
+narrative = "targeting fully-remote roles at globally-distributed companies paying at least $160,000 base, or roles that sponsor a visa and relocation (EU, Japan preferred)"
+
+[[shape]]
+name = "global-remote"
+remote = "required"
+comp_floor_usd = 160000
+
+[[shape]]
+name = "relocation"
+destinations = ["EU", "Japan"]
+requires = ["visa_sponsorship"]
+
+[llm.default]
+provider = "openrouter"        # openrouter | anthropic | local
+model = "moonshotai/kimi-k2-thinking"
+
+[llm.humanize]                 # line-editing needs no big model
+provider = "local"
+model = "llama3.2:3b"
+
+[autopilot]
+min_fit = 85
+max_drafts_per_day = 5
+
+# [integrations] — uncomment as you connect them (ids here, tokens in .env)
+# [slack]
+# channel = "D0XXXXXXX"
+# allowed_users = ["U0XXXXXXX"]
+# [notion]
+# database_id = "..."
