@@ -12,8 +12,32 @@ sys.path.insert(0, str(ROOT))
 # Neutralize env vars that would trip the OpenRouter constructor during tests.
 os.environ.setdefault("OPENROUTER_API_KEY", "test-key-not-used")
 
+# HARD ISOLATION: strip every external-service credential before any karani
+# module loads. The developer's .env holds REAL Slack/Notion/DB credentials,
+# and best-effort integrations (maybe_sync_job, mem0) read them from the
+# environment at call time — with them present, "deterministic" tests write
+# junk to the developer's real Notion board / vector store. Tests that need
+# these vars set fakes via monkeypatch.setenv (auto-reverted per test).
+for _var in (
+    "DATABASE_URL",
+    "NOTION_TOKEN", "NOTION_DATABASE_ID",
+    "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL",
+    "LOCAL_LLM_BASE_URL", "MEM0_LLM_MODEL",
+):
+    os.environ.pop(_var, None)
+os.environ["KARANI_MEMORY"] = "basic"
+
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_external_creds(monkeypatch):
+    """Belt-and-suspenders: re-strip credentials before every test, so a
+    test that forgets to clean up can never arm the next one."""
+    for var in ("NOTION_TOKEN", "NOTION_DATABASE_ID", "SLACK_BOT_TOKEN",
+                "SLACK_APP_TOKEN", "SLACK_CHANNEL", "DATABASE_URL"):
+        monkeypatch.delenv(var, raising=False)
 
 
 @pytest.fixture

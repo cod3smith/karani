@@ -289,6 +289,13 @@ Full details in `docs/conventions.md`. The one-liners:
   `tests/test_e2e_pipeline.py`).
 - MCP tools are tested through `app.call_tool` — full validation +
   execution + serialization, no transport (see `tests/test_mcp_server.py`).
+- **conftest.py strips all external-service credentials** (Notion, Slack,
+  DATABASE_URL) before any module loads, plus an autouse re-strip per
+  test. Best-effort integrations read env at call time — without the
+  strip, the developer's real .env makes "deterministic" tests write to
+  live services (this happened: 30 fixture pages on the real Notion
+  board). A suite that suddenly runs slower than ~2s is doing network
+  I/O — treat that as a failure even when everything passes.
 - `pytest-asyncio` is auto-mode (see `pyproject.toml`). Just decorate coroutines
   with `@pytest.mark.asyncio`.
 - The in-memory `Storage` fallback (`Storage("")`) is the standard test
