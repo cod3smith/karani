@@ -262,6 +262,38 @@ def _fit_band(fit: int | None) -> str:
     return "<70"
 
 
+_ATS_SOURCES = frozenset({"greenhouse", "lever", "ashby", "workable"})
+
+
+def _dedupe_canonical(rows: list[dict], limit: int) -> list[dict]:
+    """One row per canonical role (company + title + posted-week).
+
+    Within a single ingest run the orchestrator suppresses duplicates,
+    but ACROSS runs the same role from an ATS and a feed persists as two
+    rows — so the shortlist showed it twice and autopilot could draft two
+    packs for one job. Prefer the ATS copy (richer, canonical apply URL),
+    then the higher fit. Rows without a canonical_hash pass through.
+    """
+    best: dict[str, dict] = {}
+    order: list[str] = []
+    passthrough: list[dict] = []
+    for r in rows:
+        ch = r.get("canonical_hash")
+        if not ch:
+            passthrough.append(r)
+            continue
+        cur = best.get(ch)
+        if cur is None:
+            best[ch] = r
+            order.append(ch)
+            continue
+        challenger = (r.get("source") in _ATS_SOURCES, r.get("fit_score") or 0)
+        incumbent = (cur.get("source") in _ATS_SOURCES, cur.get("fit_score") or 0)
+        if challenger > incumbent:
+            best[ch] = r
+    return ([best[ch] for ch in order] + passthrough)[:limit]
+
+
 def _days_ago(ts: Any, now: datetime) -> int | None:
     if not isinstance(ts, datetime):
         return None
@@ -707,14 +739,15 @@ class Storage:
                     and r.get("active", True)
                     and r.get("user_verdict") in (None, "later")]
             rows.sort(key=lambda r: (r.get("fit_score") or 0), reverse=True)
-            return rows[:limit]
+            # Over-fetch so dedup still fills the requested limit.
+            return _dedupe_canonical(rows[: limit * 2], limit)
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
                 SELECT id, company_display, title, apply_url, location_raw,
                        role_category, seniority, comp_min_usd, comp_max_usd,
                        verdict, fit_score, qualification, prefilter_score,
-                       posted_at, user_verdict
+                       posted_at, user_verdict, canonical_hash, source
                   FROM jobs
                  WHERE verdict IN ('qualified', 'maybe')
                    AND active = TRUE
@@ -722,9 +755,9 @@ class Storage:
                  ORDER BY fit_score DESC NULLS LAST, prefilter_score DESC
                  LIMIT $1
                 """,
-                limit,
+                limit * 2,
             )
-            return [dict(r) for r in rows]
+            return _dedupe_canonical([dict(r) for r in rows], limit)
 
     # --- Application state machine ---
 
@@ -1048,7 +1081,8 @@ class Storage:
             rows = sorted((dict(r) for r in self._memory.values()
                            if eligible(r)),
                           key=lambda r: -(r.get("fit_score") or 0))
-            return rows[:limit]
+            # Dedup before the cap: one role must never draw two packs.
+            return _dedupe_canonical(rows[: limit * 2], limit)
         async with self.pool.acquire() as conn:
             records = await conn.fetch(
                 """
@@ -1061,9 +1095,9 @@ class Storage:
                  ORDER BY fit_score DESC, posted_at DESC
                  LIMIT $2
                 """,
-                min_fit, limit,
+                min_fit, limit * 2,
             )
-            return [dict(r) for r in records]
+            return _dedupe_canonical([dict(r) for r in records], limit)
 
     # --- Notion mirror (see notionsync/) ---
 

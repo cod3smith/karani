@@ -221,3 +221,56 @@ async def test_record_draft_persists_provenance():
     assert row["draft_path"] == "drafts/x.md"
     assert row["draft_prompt_version"] == "draft-v1"
     assert row["draft_model"] == "fake-model"
+
+
+# --- cross-run canonical dedup (roadmap 0.1) ---
+
+async def _seed_feed_twin(storage: Storage, source_id: str, **overrides) -> int:
+    """Same company+title+week as _job() but from a feed source, so it
+    shares a canonical_hash with the ATS row — the across-runs duplicate
+    the orchestrator's within-run dedup cannot catch."""
+    job = _job(source_id)
+    job.source = Source.REMOTEOK
+    job.content_hash = ""
+    job.canonical_hash = ""
+    job.finalize()
+    result = await storage.upsert(job, pre_filter(job, DEFAULT_PROFILE))
+    (await storage.get_job(result["id"])).update(overrides)
+    return result["id"]
+
+
+@pytest.mark.asyncio
+async def test_top_qualified_dedupes_canonical_across_sources():
+    storage = Storage("")
+    await storage.connect()
+    ats = await _seed(storage, "1", verdict="qualified", fit_score=90)
+    feed = await _seed_feed_twin(storage, "99", verdict="qualified",
+                                 fit_score=95)
+    assert (await storage.get_job(ats))["canonical_hash"] == \
+        (await storage.get_job(feed))["canonical_hash"]
+
+    rows = await storage.top_qualified(limit=10)
+    assert [r["id"] for r in rows] == [ats]   # ATS wins despite lower fit
+
+
+@pytest.mark.asyncio
+async def test_autopilot_candidates_dedupe_prevents_double_packs():
+    storage = Storage("")
+    await storage.connect()
+    ats = await _seed(storage, "1", verdict="qualified", fit_score=90)
+    await _seed_feed_twin(storage, "99", verdict="qualified", fit_score=95)
+    cands = await storage.autopilot_candidates(min_fit=85, limit=5)
+    assert [r["id"] for r in cands] == [ats]
+
+
+@pytest.mark.asyncio
+async def test_dedup_keeps_distinct_roles_and_fills_limit():
+    storage = Storage("")
+    await storage.connect()
+    a = await _seed(storage, "1", verdict="qualified", fit_score=95)
+    b_job = _job("2", title="Staff Platform Engineer")
+    result = await storage.upsert(b_job, pre_filter(b_job, DEFAULT_PROFILE))
+    (await storage.get_job(result["id"])).update(verdict="qualified",
+                                                 fit_score=90)
+    rows = await storage.top_qualified(limit=10)
+    assert [r["id"] for r in rows] == [a, result["id"]]
