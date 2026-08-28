@@ -98,9 +98,9 @@ karani/                              (repo)
 ├── docker-compose.yml               ← dev infra (pgvector db :5433, minio :9010, ollama)
 ├── data/                            ← resume.md (yours, gitignored) + .example
 ├── drafts/                          ← generated packs (gitignored)
-├── tests/                           ← 192+ deterministic tests (no network, no clock)
+├── tests/                           ← 217 deterministic + 12 Postgres-marked (`make test-pg`)
 └── docs/                            ← vision · architecture · roadmap · memory ·
-      conventions · operations · adrs/ (0001-0015)
+      conventions · operations · adrs/ (0001-0016)
 ```
 
 ---
@@ -236,6 +236,13 @@ Full details in `docs/conventions.md`. The one-liners:
   `tests/test_e2e_pipeline.py`).
 - MCP tools are tested through `app.call_tool` — full validation +
   execution + serialization, no transport (see `tests/test_mcp_server.py`).
+- **Postgres-backed SQL** has its own suite: `make test-pg` (marker `pg`,
+  throwaway db on the compose Postgres, skips when it is down). It is
+  excluded from default runs — the one sanctioned exception to
+  no-network. Add a `pg` test whenever you touch production SQL.
+- **Graph tests must fake `ingest` and `qualify`** (see
+  `tests/test_orchestration.py`): building the full graph otherwise runs
+  the real orchestrator against live job boards.
 - **conftest.py strips all external-service credentials** (Notion, Slack,
   DATABASE_URL) before any module loads, plus an autouse re-strip per
   test. Best-effort integrations read env at call time — without the

@@ -35,6 +35,7 @@ model = "llama3.2:3b"
 
 [autopilot]
 min_fit = 85
+# verify = true    # agent double-checks each candidate before drafting (billed)
 max_drafts_per_day = 5
 
 # [integrations] — uncomment as you connect them (ids here, tokens in .env)

@@ -4,46 +4,53 @@ Prioritized. Each item has (1) motivation, (2) concrete steps, (3) acceptance
 criteria, (4) rough effort. Sequence is deliberate — earlier items unblock
 later ones.
 
-## Tier 0 — Production hardening (2026-08 audit)
+## Tier 0 — Production hardening (2026-08 audit) — COMPLETE
 
-Findings from the principal-level audit, in priority order. Each is
-well-scoped — good contributor entry points.
+All seven findings from the principal-level audit are shipped; see
+ADR 0016 for the reasoning and ADR 0015 for 0.5/0.6.
 
-### 0.1 Cross-run dedup in candidate queries
-Same role from an ATS + a feed lands as two rows across runs (12 live
-duplicate groups measured). `autopilot_candidates` and `top_qualified`
-must dedupe on `canonical_hash` (prefer the ATS row) so one role never
-gets two packs. Full fix is 2.2. **Half-day.**
+### 0.1 Cross-run dedup in candidate queries — SHIPPED (2026-08)
 
-### 0.2 Advisory locks around billed runs
-Hourly graph, MCP server, and Slack listener share one DB with no lock —
-concurrent `qualify`/`autopilot` runs double-bill. `pg_advisory_lock`
-wrappers; in-memory no-op. **Half-day.**
+Shipped: `_dedupe_canonical` collapses `top_qualified` and
+`autopilot_candidates` per canonical_hash (ATS copy wins, then fit), so
+one role can never draw two packs. ADR 0016.
 
-### 0.3 Postgres-marked test suite
-All tests run on the in-memory fallback; the production SQL (UPSERT,
-funnel FILTERs, next_actions) has zero coverage. Same suite, `pg` marker,
-throwaway compose Postgres. **Day.**
+### 0.2 Advisory locks around billed runs — SHIPPED (2026-08)
 
-### 0.4 Heartbeat + run/cost ledger
-The graph's report node writes a run row (per-node stats, tokens from
-provider `usage`, est. cost); daily-notify alerts when the last hourly
-pass is stale >3h. Slack listener under launchd KeepAlive. **Day.**
+Shipped: `Storage.run_lock` (session-scoped pg_try_advisory_lock on a
+dedicated connection) wraps `qualify_pending` and `run_autopilot`;
+contended runs return `lock_skipped=True`. ADR 0016.
 
-### 0.5 Per-task model routing
-Draft/humanize/tailor all hit the thinking model at high effort (~10 min
-per pack). A per-task provider/effort map — humanize on a fast cheap
-model or local Ollama — cuts pack latency ~3x and cost ~40%. **Half-day.**
+### 0.3 Postgres-marked test suite — SHIPPED (2026-08)
 
-### 0.6 Slack listener allowlist + mem0 telemetry off
-`SLACK_ALLOWED_USERS` gate on inbound commands; disable mem0's PostHog
-telemetry in `_mem0_config`. **Hour.**
+Shipped: `pytest -m pg` / `make test-pg` — 12 tests against a throwaway
+compose database covering the UPSERT reset, resume-hash gate, dedup,
+funnel FILTERs, next_actions, sweep, ledgers, and cross-connection lock
+semantics. CircleCI job with a pgvector sidecar. ADR 0016.
 
-### 0.7 Agent verify-before-draft (first graph branch)
-Before autopilot spends a pack's budget, agent-mode verifies geo/visa/
-comp claims for that role using the intel cache. This is the branching
-that earns LangGraph's checkpointer. **1-2 days.**
+### 0.4 Heartbeat + run/cost ledger — SHIPPED (2026-08)
 
+Shipped: `run_ledger` row per pass (node stats, token deltas from the
+new `qualification.usage` counters, error count) and `heartbeat_alert`
+prepended to the twice-daily push when the last pass is missing or >3h
+old (`KARANI_HEARTBEAT_MAX_AGE_H`). ADR 0016.
+
+### 0.5 Per-task model routing — SHIPPED (2026-08)
+
+Shipped with karani.toml: `[llm.<task>]` routes qualify/draft/humanize/
+tailor/prep/followup/agent independently (ADR 0015).
+
+### 0.6 Slack listener allowlist + mem0 telemetry off — SHIPPED (2026-08)
+
+Shipped: `[slack] allowed_users` gates inbound commands; mem0 telemetry
+disabled by default (ADR 0015).
+
+### 0.7 Agent verify-before-draft (first graph branch) — SHIPPED (2026-08)
+
+Shipped: `[autopilot] verify = true` routes the graph through a `verify`
+node that agent-checks each candidate before pack budget is spent;
+refuted candidates are filtered by `run_autopilot(allowed_ids)`. Off by
+default, errors allow through. ADR 0016.
 ## Tier 1 — Complete the daily loop
 
 ### 1.1 Rotate the Neon DSN

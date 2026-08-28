@@ -1,6 +1,6 @@
 [project]
 name = "karani"
-version = "0.3.0"
+version = "0.4.0"
 description = "A self-hosted AI job-hunt pipeline: hunts postings hourly, qualifies them against your resume, drafts full application packs, and delivers them for human review. It never submits."
 readme = "README.md"
 license = { file = "LICENSE" }
