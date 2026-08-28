@@ -38,6 +38,7 @@ class HuntState(TypedDict, total=False):
     notion: dict[str, Any]
     alerted: bool
     run_recorded: bool
+    verified: dict[int, bool]
     errors: Annotated[list[str], _merge_errors]
 
 
@@ -48,6 +49,7 @@ class HuntDeps:
     make_qualifier: Callable[[], Any]
     load_resume: Callable[[], Any]
     slack_factory: Callable[[], Any] | None = None
+    make_agent_qualifier: Callable[[], Any] | None = None
     channel: str = ""
     qualify_limit: int = int(os.getenv("HUNT_QUALIFY_LIMIT", "50"))
     memory: Any = None
@@ -124,11 +126,56 @@ def build_hunt_graph(deps: HuntDeps):
         return ({"qualify": result} if result is not None
                 else {"errors": [err]})
 
+    async def verify(state: HuntState) -> dict:
+        """Agent-mode double-check of each candidate's claims BEFORE the
+        pack budget is spent (ADR 0016).
+
+        Single-turn qualification reads only the JD; the agent can check
+        whether a company actually hires globally or sponsors relocation
+        in practice. A refuted candidate is blocked from drafting, which
+        is where the real money goes. Verification failures allow the
+        candidate through — a broken verifier must never silence the
+        hunt.
+        """
+        from karani.autopilot.runner import _caps
+        from karani.qualification.agent import qualify_one_agent
+
+        min_fit, max_drafts, _ = _caps()
+        rows = await deps.storage.autopilot_candidates(
+            min_fit=min_fit, limit=max_drafts)
+        if not rows:
+            return {"verified": {}}
+
+        make_agent = deps.make_agent_qualifier or deps.make_qualifier
+        resume = deps.load_resume()
+        verified: dict[int, bool] = {}
+        for row in rows:
+            try:
+                result = await qualify_one_agent(
+                    make_agent(), resume=resume.raw_markdown,
+                    resume_hash=resume.hash, hints=resume.hints,
+                    job_row=row)
+                ok = (result.verdict == "qualified"
+                      and result.fit_score >= min_fit)
+                verified[row["id"]] = ok
+                if not ok:
+                    log.info("verify refuted job %s (%s, fit=%s)",
+                             row["id"], result.verdict, result.fit_score)
+            except Exception as exc:
+                log.warning("verify failed for job %s (%s); allowing through",
+                            row["id"], exc)
+                verified[row["id"]] = True
+        return {"verified": verified}
+
     async def autopilot(state: HuntState) -> dict:
         from karani.autopilot import run_autopilot
 
         if not deps.slack_factory or not deps.channel:
             return {"autopilot": {"skipped": "slack not configured"}}
+
+        allowed = (
+            {jid for jid, ok in state["verified"].items() if ok}
+            if "verified" in state else None)
 
         async def body():
             stats = await run_autopilot(
@@ -136,6 +183,7 @@ def build_hunt_graph(deps: HuntDeps):
                 channel=deps.channel,
                 make_qualifier=deps.make_qualifier,
                 load_resume=deps.load_resume,
+                allowed_ids=allowed,
             )
             return {"candidates": stats.candidates, "drafted": stats.drafted,
                     "delivered": stats.delivered,
@@ -183,12 +231,19 @@ def build_hunt_graph(deps: HuntDeps):
     g = StateGraph(HuntState)
     g.add_node("ingest", ingest)
     g.add_node("qualify", qualify)
+    g.add_node("verify", verify)
     g.add_node("autopilot", autopilot)
     g.add_node("notion", notion)
     g.add_node("report", report)
     g.add_edge(START, "ingest")
     g.add_edge("ingest", "qualify")
-    g.add_edge("qualify", "autopilot")
+    def _route_after_qualify(state: HuntState) -> str:
+        from karani.config import get_config
+        return "verify" if get_config().autopilot.verify else "autopilot"
+
+    g.add_conditional_edges("qualify", _route_after_qualify,
+                            {"verify": "verify", "autopilot": "autopilot"})
+    g.add_edge("verify", "autopilot")
     g.add_edge("autopilot", "notion")
     g.add_edge("notion", "report")
     g.add_edge("report", END)

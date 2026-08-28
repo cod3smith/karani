@@ -50,6 +50,10 @@ artifacts = ["minio>=7.2"]  # per-job resume/letter objects + presigned links (A
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# `pg` tests need a reachable Postgres, so they are the one exception to
+# the no-network rule and are excluded from default runs (`make test-pg`).
+markers = ["pg: requires a reachable Postgres (compose db)"]
+addopts = "-m 'not pg'"
 
 [project.scripts]
 karani = "karani.cli:main"

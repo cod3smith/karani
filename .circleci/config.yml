@@ -54,6 +54,30 @@ jobs:
               echo "skipping coveralls upload"
             fi
 
+  test-pg:
+    docker:
+      - image: cimg/python:3.13
+      - image: pgvector/pgvector:pg16
+        environment:
+          POSTGRES_USER: karani
+          POSTGRES_PASSWORD: karani
+          POSTGRES_DB: postgres
+    steps:
+      - install
+      - run:
+          name: Wait for postgres
+          command: |
+            for i in $(seq 1 30); do
+              nc -z localhost 5432 && exit 0
+              sleep 1
+            done
+            echo "postgres never came up" && exit 1
+      - run:
+          name: Postgres-backed storage tests
+          command: >
+            KARANI_TEST_PG_URL=postgresql://karani:karani@localhost:5432/postgres
+            uv run pytest -m pg tests/test_pg_storage.py -q
+
   build:
     executor:
       name: py
@@ -80,4 +104,5 @@ workflows:
     jobs:
       - test:
           tag: "3.13"
+      - test-pg
       - build

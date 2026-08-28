@@ -113,6 +113,10 @@ class AutopilotCfg(BaseModel, frozen=True):
     min_fit: int | None = None
     max_drafts: int | None = None
     max_drafts_per_day: int | None = None
+    # Agent-mode double-check of each candidate's geo/visa/comp claims
+    # before pack budget is spent (ADR 0016). Billed: one agent call per
+    # candidate. Off by default.
+    verify: bool = False
 
 
 class HuntCfg(BaseModel, frozen=True):

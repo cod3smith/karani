@@ -1,12 +1,16 @@
 # karani — developer aliases. The real interface is the `karani` CLI
 # (see `karani --help`); these targets exist for muscle memory and CI.
 
-.PHONY: test lint build ingest qualify digest daily hunt unschedule \
+.PHONY: test test-pg lint build ingest qualify digest daily hunt unschedule \
         autopilot actions funnel mcp slack hourly infra-up infra-up-llm \
         infra-down
 
 test:
 	uv run pytest tests -q
+
+# Postgres-backed SQL coverage — needs `karani infra up` (skips if down).
+test-pg:
+	uv run pytest -m pg tests/test_pg_storage.py -q
 
 lint:
 	uv run ruff check karani tests
