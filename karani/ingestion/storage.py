@@ -758,20 +758,39 @@ class Storage:
             )
 
     async def set_user_verdict(self, job_id: int, verdict: str) -> None:
-        """Kelyn reacted to a suggestion. Used for the feedback loop."""
+        """Record a reaction to a suggestion — the feedback-loop signal.
+
+        The verdict applies to the ROLE, not the row: it also marks every
+        canonical twin (same company + title + week from another source).
+        Otherwise deciding on one copy leaves its twin unreviewed, and
+        the role resurfaces in the shortlist as if it were new — the
+        duplicate noise dedup exists to prevent. Only the verdict
+        propagates; application_status stays on the row actually applied
+        to.
+        """
         allowed = {"apply", "shortlist", "later", "skip", "applied"}
         if verdict not in allowed:
             raise ValueError(f"user_verdict must be one of {allowed}")
         if self.pool is None:
+            target = next((r for r in self._memory.values()
+                           if r["id"] == job_id), None)
+            if target is None:
+                return
+            canonical = target.get("canonical_hash")
             for row in self._memory.values():
-                if row["id"] == job_id:
+                if row["id"] == job_id or (
+                        canonical and row.get("canonical_hash") == canonical):
                     row["user_verdict"] = verdict
-                    return
             return
         async with self.pool.acquire() as conn:
             await conn.execute(
-                "UPDATE jobs SET user_verdict = $2, user_verdict_at = NOW() "
-                "WHERE id = $1",
+                """
+                UPDATE jobs SET user_verdict = $2, user_verdict_at = NOW()
+                 WHERE id = $1
+                    OR canonical_hash = (SELECT canonical_hash FROM jobs
+                                          WHERE id = $1
+                                            AND canonical_hash IS NOT NULL)
+                """,
                 job_id, verdict,
             )
 

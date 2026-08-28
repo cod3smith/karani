@@ -274,3 +274,35 @@ async def test_dedup_keeps_distinct_roles_and_fills_limit():
                                                  fit_score=90)
     rows = await storage.top_qualified(limit=10)
     assert [r["id"] for r in rows] == [a, result["id"]]
+
+
+@pytest.mark.asyncio
+async def test_verdict_applies_to_the_canonical_role_not_just_the_row():
+    """Regression (caught by the pg suite): deciding on one copy left its
+    canonical twin unreviewed, so the role resurfaced in the shortlist as
+    if it were new."""
+    storage = Storage("")
+    await storage.connect()
+    ats = await _seed(storage, "1", verdict="qualified", fit_score=90)
+    feed = await _seed_feed_twin(storage, "99", verdict="qualified",
+                                 fit_score=95)
+
+    await storage.set_user_verdict(ats, "apply")
+
+    assert (await storage.get_job(feed))["user_verdict"] == "apply"
+    assert await storage.top_qualified(limit=10) == []
+    assert await storage.autopilot_candidates(min_fit=85, limit=5) == []
+
+
+@pytest.mark.asyncio
+async def test_verdict_does_not_leak_to_unrelated_roles():
+    storage = Storage("")
+    await storage.connect()
+    a = await _seed(storage, "1", verdict="qualified", fit_score=90)
+    other = _job("2", title="Staff Platform Engineer")
+    result = await storage.upsert(other, pre_filter(other, DEFAULT_PROFILE))
+    (await storage.get_job(result["id"])).update(verdict="qualified",
+                                                 fit_score=88)
+
+    await storage.set_user_verdict(a, "skip")
+    assert (await storage.get_job(result["id"])).get("user_verdict") is None
