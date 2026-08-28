@@ -119,6 +119,21 @@ CREATE TABLE IF NOT EXISTS company_intel (
     fetched_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Run ledger: one row per scheduler pass — per-node stats, token usage,
+-- error count. The heartbeat source for staleness alerting (roadmap 0.4):
+-- a hunt that silently stops shows up as a stale last-finished time.
+CREATE TABLE IF NOT EXISTS run_ledger (
+    id BIGSERIAL PRIMARY KEY,
+    kind TEXT NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    finished_at TIMESTAMPTZ NOT NULL,
+    state JSONB DEFAULT '{}'::jsonb,
+    tokens JSONB DEFAULT '{}'::jsonb,
+    errors INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS run_ledger_kind_idx
+    ON run_ledger (kind, finished_at DESC);
+
 -- Memory ledger — the durable system of record for karani's memory layer.
 -- Distilled, human-readable facts ("Kelyn skips crypto companies", "GitLab
 -- responded in 5 days"). The mem0/vector index is derived from this table
@@ -531,6 +546,7 @@ class Storage:
         self._next_memory_id = 1
         self._company_intel: dict[str, dict[str, Any]] = {}
         self._local_locks: set[str] = set()
+        self._runs: list[dict[str, Any]] = []
 
     async def connect(self) -> None:
         if not self.dsn:
@@ -1220,6 +1236,53 @@ class Storage:
                 """,
                 normalized, company, json.dumps(payload, default=str), now,
             )
+
+    # --- Run ledger / heartbeat (roadmap 0.4) ---
+
+    async def record_run(self, kind: str, *, started_at: datetime,
+                         finished_at: datetime, state: dict,
+                         tokens: dict, errors: int) -> None:
+        """One row per scheduler pass. Callers treat failure as
+        non-fatal — bookkeeping must never sink a hunt."""
+        if self.pool is None:
+            self._runs.append({
+                "kind": kind, "started_at": started_at,
+                "finished_at": finished_at, "state": state,
+                "tokens": tokens, "errors": errors,
+            })
+            return
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO run_ledger
+                    (kind, started_at, finished_at, state, tokens, errors)
+                VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)
+                """,
+                kind, started_at, finished_at,
+                json.dumps(state, default=str),
+                json.dumps(tokens, default=str), errors,
+            )
+
+    async def last_run_at(self, kind: str) -> datetime | None:
+        """When a pass of `kind` last finished — None if never."""
+        if self.pool is None:
+            return max((r["finished_at"] for r in self._runs
+                        if r["kind"] == kind), default=None)
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT MAX(finished_at) FROM run_ledger WHERE kind = $1",
+                kind,
+            )
+
+    async def recent_runs(self, kind: str, limit: int = 10) -> list[dict]:
+        if self.pool is None:
+            runs = [r for r in self._runs if r["kind"] == kind]
+            return list(reversed(runs))[:limit]
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch(
+                "SELECT * FROM run_ledger WHERE kind = $1 "
+                "ORDER BY finished_at DESC LIMIT $2", kind, limit)
+            return [dict(r) for r in records]
 
     # --- Memory ledger (see docs/memory.md) ---
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Callable, TypedDict
 
@@ -36,6 +37,7 @@ class HuntState(TypedDict, total=False):
     autopilot: dict[str, Any]
     notion: dict[str, Any]
     alerted: bool
+    run_recorded: bool
     errors: Annotated[list[str], _merge_errors]
 
 
@@ -63,6 +65,34 @@ async def _with_retry(name: str, fn, attempts: int = 2) -> tuple[Any, str | None
             log.warning("hunt node %s failed (attempt %d/%d): %s",
                         name, i, attempts, exc)
     return None, f"{name}: {last}"
+
+
+HEARTBEAT_MAX_AGE_HOURS = 3
+
+
+async def heartbeat_alert(storage, now: datetime | None = None) -> str | None:
+    """Alert text when the hourly hunt looks dead; None when healthy.
+
+    The scheduler dying silently is invisible otherwise — the in-pass
+    error alert cannot fire for a pass that never runs (roadmap 0.4).
+    Threshold: KARANI_HEARTBEAT_MAX_AGE_H (default 3h).
+    """
+    now = now or datetime.now(timezone.utc)
+    max_age = timedelta(hours=int(os.getenv(
+        "KARANI_HEARTBEAT_MAX_AGE_H", str(HEARTBEAT_MAX_AGE_HOURS))))
+    last = await storage.last_run_at("hourly")
+    if last is None:
+        return ("karani heartbeat: no hourly pass on record — is the "
+                "scheduler installed? Run `karani hunt`.")
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    age = now - last
+    if age > max_age:
+        return (f"karani heartbeat: last hourly pass finished "
+                f"{age.total_seconds() / 3600:.1f}h ago (threshold "
+                f"{max_age.total_seconds() / 3600:.0f}h) — the hunt may be "
+                f"dead. Check logs/ and `launchctl list | grep karani`.")
+    return None
 
 
 def build_hunt_graph(deps: HuntDeps):
@@ -190,7 +220,24 @@ async def run_hunt_once() -> HuntState:
             channel=channel,
             memory=MemoryManager(storage),
         )
+        from karani.qualification import usage
+
+        started = datetime.now(timezone.utc)
+        tokens_before = usage.snapshot()
         graph = build_hunt_graph(deps)
-        return await graph.ainvoke({})
+        state = await graph.ainvoke({})
+        try:
+            await storage.record_run(
+                "hourly", started_at=started,
+                finished_at=datetime.now(timezone.utc),
+                state={k: state.get(k) for k in
+                       ("ingest", "qualify", "autopilot", "notion")},
+                tokens=usage.delta(tokens_before, usage.snapshot()),
+                errors=len(state.get("errors", [])),
+            )
+            state["run_recorded"] = True
+        except Exception:   # bookkeeping must never sink a hunt
+            log.exception("run ledger write failed")
+        return state
     finally:
         await storage.close()

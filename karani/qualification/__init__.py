@@ -1,3 +1,4 @@
+from . import usage
 from .agent import qualify_one_agent
 from .client import QualifierClient, qualify_one
 from .factory import get_qualifier
@@ -9,6 +10,7 @@ from .tools import DEFAULT_TOOLS, Tool, ToolRegistry, default_registry
 from .openrouter import OpenRouterQualifier
 
 __all__ = [
+    "usage",
     "QualifierClient", "qualify_one", "qualify_one_agent",
     "get_qualifier",
     "QualificationResult", "QualStrength", "QualGap",

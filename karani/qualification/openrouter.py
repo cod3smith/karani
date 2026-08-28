@@ -137,7 +137,11 @@ class OpenRouterQualifier:
                         raise RuntimeError(
                             f"openrouter {r.status_code}: {r.text[:400]}"
                         )
-                    return r.json()
+                    data = r.json()
+                    # Feed the run ledger's per-pass token cost.
+                    from . import usage as _usage
+                    _usage.record(data.get("usage"))
+                    return data
         raise RuntimeError("unreachable")
 
     async def complete(self, system: str, user: str) -> str:

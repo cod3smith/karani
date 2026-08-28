@@ -414,6 +414,11 @@ async def _notify(kind: str, limit: int) -> int:
     await storage.connect()
     try:
         slack = SlackClient()
+        # Surface a dead scheduler before the digest it would have filled.
+        from karani.orchestration.graph import heartbeat_alert
+        alert = await heartbeat_alert(storage)
+        if alert:
+            await slack.post_message(channel, alert)
         if kind == "digest":
             rows = await storage.top_qualified(limit=limit)
             blocks = digest_blocks(rows, limit=limit)
