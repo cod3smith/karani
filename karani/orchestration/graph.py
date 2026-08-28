@@ -118,7 +118,8 @@ def build_hunt_graph(deps: HuntDeps):
     async def notion(state: HuntState) -> dict:
         from karani.notionsync import NotionClient, sync_jobs
 
-        database_id = os.getenv("NOTION_DATABASE_ID", "")
+        from karani.notionsync import configured_database_id
+        database_id = configured_database_id()
         if not database_id or not os.getenv("NOTION_TOKEN", ""):
             return {"notion": {"skipped": "notion not configured"}}
 
@@ -175,7 +176,8 @@ async def run_hunt_once() -> HuntState:
     storage = Storage(settings.database_url)
     await storage.connect()
     try:
-        channel = os.getenv("SLACK_CHANNEL", "")
+        from karani.slackbridge import configured_channel
+        channel = configured_channel()
         slack_factory = None
         if channel and os.getenv("SLACK_BOT_TOKEN"):
             from karani.slackbridge import SlackClient

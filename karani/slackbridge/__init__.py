@@ -13,4 +13,18 @@ from __future__ import annotations
 from .client import SlackClient, SlackError
 from .commands import handle_command
 
-__all__ = ["SlackClient", "SlackError", "handle_command"]
+
+def configured_channel() -> str:
+    """The delivery channel — env > karani.toml [slack].channel > unset.
+
+    Every sender must use this, never os.getenv directly: the channel
+    migrated into karani.toml, and a raw env read silently disables
+    delivery (the post-migration outage this helper exists to prevent).
+    """
+    from karani.config import get_config
+    from karani.config.loader import resolve
+    return resolve("SLACK_CHANNEL", get_config().slack.channel, "")
+
+
+__all__ = ["SlackClient", "SlackError", "handle_command",
+           "configured_channel"]

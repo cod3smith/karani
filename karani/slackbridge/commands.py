@@ -289,10 +289,10 @@ async def _dispatch(cmd, args, storage, memory,
             f"• {p['login']} — {p['url']}" for p in paths[:10])
 
     if cmd == "sync":
-        import os
 
         from karani.notionsync import NotionClient, NotionError, sync_jobs
-        database_id = os.getenv("NOTION_DATABASE_ID", "")
+        from karani.notionsync import configured_database_id
+        database_id = configured_database_id()
         if not database_id:
             return ("Notion is not configured — set NOTION_TOKEN and "
                     "NOTION_DATABASE_ID (see README).")

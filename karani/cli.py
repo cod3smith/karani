@@ -401,12 +401,12 @@ async def _intel(company: str, refresh: bool) -> int:
 
 async def _notify(kind: str, limit: int) -> int:
     _configure_logging()
-    import os
 
     from karani.slackbridge import SlackClient
     from karani.slackbridge.blocks import actions_blocks, digest_blocks
 
-    channel = os.getenv("SLACK_CHANNEL", "")
+    from karani.slackbridge import configured_channel
+    channel = configured_channel()
     if not channel:
         print("ERROR: SLACK_CHANNEL not set", file=sys.stderr)
         return 2
@@ -433,13 +433,13 @@ async def _notify(kind: str, limit: int) -> int:
 
 async def _autopilot(min_fit: int | None, max_drafts: int | None) -> int:
     _configure_logging()
-    import os
 
     from karani.autopilot import run_autopilot
     from karani.qualification import get_qualifier
     from karani.slackbridge import SlackClient
 
-    channel = os.getenv("SLACK_CHANNEL", "")
+    from karani.slackbridge import configured_channel
+    channel = configured_channel()
     if not channel:
         print("autopilot: SLACK_CHANNEL not set — nothing to deliver to; "
               "skipping (configure Slack to enable the continuous hunt)")
@@ -467,7 +467,6 @@ async def _autopilot(min_fit: int | None, max_drafts: int | None) -> int:
 
 async def _notion(action: str, parent_page_id: str | None) -> int:
     _configure_logging()
-    import os
 
     from karani.notionsync import NotionClient, NotionError, init_database, sync_jobs
 
@@ -488,7 +487,8 @@ async def _notion(action: str, parent_page_id: str | None) -> int:
         print("add to .env:  NOTION_DATABASE_ID=" + db_id)
         return 0
 
-    database_id = os.getenv("NOTION_DATABASE_ID", "")
+    from karani.notionsync import configured_database_id
+    database_id = configured_database_id()
     if not database_id:
         print("ERROR: NOTION_DATABASE_ID not set — run "
               "`notion init <parent_page_id>` first", file=sys.stderr)

@@ -185,3 +185,50 @@ def test_repo_example_matches_packaged_example():
     packaged = (resources.files("karani") / "resources"
                 / "karani.example.toml").read_text()
     assert Path("karani.example.toml").read_text() == packaged
+
+
+def test_delivery_channels_come_from_config(tmp_path):
+    """Regression: after SLACK_CHANNEL / NOTION_DATABASE_ID migrated into
+    karani.toml, several senders still read os.getenv directly and
+    silently skipped delivery ('slack not configured' in the hourly log).
+    Every sender must go through these helpers."""
+    cfg_file = _write(tmp_path, """
+version = 1
+[slack]
+channel = "D_FROM_TOML"
+[notion]
+database_id = "db_from_toml"
+""")
+    reload_config(cfg_file)
+    from karani.notionsync import configured_database_id
+    from karani.slackbridge import configured_channel
+
+    assert configured_channel() == "D_FROM_TOML"
+    assert configured_database_id() == "db_from_toml"
+
+
+def test_delivery_channel_env_still_wins(tmp_path, monkeypatch):
+    monkeypatch.setenv("SLACK_CHANNEL", "D_FROM_ENV")
+    cfg_file = _write(tmp_path, """
+version = 1
+[slack]
+channel = "D_FROM_TOML"
+""")
+    reload_config(cfg_file)
+    from karani.slackbridge import configured_channel
+    assert configured_channel() == "D_FROM_ENV"
+
+
+def test_no_raw_delivery_env_reads_outside_helpers():
+    """Grep-as-test: raw os.getenv for delivery targets must not exist
+    outside the canonical helpers/resolve sites."""
+    import subprocess
+    out = subprocess.run(
+        ["grep", "-rn",
+         r'os.getenv("SLACK_CHANNEL"\|os.getenv("NOTION_DATABASE_ID"',
+         "karani/", "--include=*.py"],
+        capture_output=True, text=True).stdout
+    offenders = [line for line in out.splitlines()
+                 if "loader.py" not in line and "listener.py" not in line
+                 and "sync.py" not in line and "__init__.py" not in line]
+    assert offenders == [], offenders

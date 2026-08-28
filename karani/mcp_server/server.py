@@ -446,14 +446,14 @@ async def notify_slack(kind: str = "digest", limit: int = 10) -> dict:
     """Push the digest or the next-actions worklist to the configured
     Slack channel (SLACK_CHANNEL + SLACK_BOT_TOKEN). kind: digest |
     actions."""
-    import os
 
     from karani.slackbridge import SlackClient, SlackError
     from karani.slackbridge.blocks import actions_blocks, digest_blocks
 
     if kind not in ("digest", "actions"):
         raise ToolError("kind must be digest or actions")
-    channel = os.getenv("SLACK_CHANNEL", "")
+    from karani.slackbridge import configured_channel
+    channel = configured_channel()
     if not channel:
         raise ToolError("SLACK_CHANNEL not set")
     storage = await _get_storage()
@@ -484,12 +484,12 @@ async def autopilot(min_fit: int | None = None,
     review card with Approve / Skip / I-applied buttons. Billed (one
     draft per candidate, capped by max_drafts, default 3; fit floor
     default 85). Karani never submits — the human does."""
-    import os
 
     from karani.autopilot import run_autopilot
     from karani.slackbridge import SlackClient, SlackError
 
-    channel = os.getenv("SLACK_CHANNEL", "")
+    from karani.slackbridge import configured_channel
+    channel = configured_channel()
     if not channel:
         raise ToolError("SLACK_CHANNEL not set — autopilot needs a Slack "
                         "channel to deliver packs to")
@@ -516,11 +516,11 @@ async def notion_sync() -> dict:
     are created once and patched thereafter. Requires NOTION_TOKEN and
     NOTION_DATABASE_ID (create the board with `python -m ingestion.cli
     notion init <parent_page_id>`)."""
-    import os
 
     from karani.notionsync import NotionClient, NotionError, sync_jobs
 
-    database_id = os.getenv("NOTION_DATABASE_ID", "")
+    from karani.notionsync import configured_database_id
+    database_id = configured_database_id()
     if not database_id:
         raise ToolError("NOTION_DATABASE_ID not set — run "
                         "`notion init <parent_page_id>` first")
