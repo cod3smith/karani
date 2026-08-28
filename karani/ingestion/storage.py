@@ -1156,12 +1156,16 @@ class Storage:
             return {"company_display": r["company_display"],
                     "payload": payload, "fetched_at": r["fetched_at"]}
 
-    async def save_company_intel(self, company: str, payload: dict) -> None:
+    async def save_company_intel(self, company: str, payload: dict,
+                                 now: datetime | None = None) -> None:
+        """`now` is injectable so TTL logic is testable without the wall
+        clock (CLAUDE.md 6: no clock in tests). Postgres stamps NOW()
+        unless a timestamp is supplied."""
         normalized = _company_normalize(company)
         if self.pool is None:
             self._company_intel[normalized] = {
                 "company_display": company, "payload": payload,
-                "fetched_at": datetime.now(timezone.utc),
+                "fetched_at": now or datetime.now(timezone.utc),
             }
             return
         async with self.pool.acquire() as conn:
@@ -1169,13 +1173,13 @@ class Storage:
                 """
                 INSERT INTO company_intel
                     (company_normalized, company_display, payload, fetched_at)
-                VALUES ($1, $2, $3::jsonb, NOW())
+                VALUES ($1, $2, $3::jsonb, COALESCE($4, NOW()))
                 ON CONFLICT (company_normalized) DO UPDATE SET
                     company_display = EXCLUDED.company_display,
                     payload = EXCLUDED.payload,
-                    fetched_at = NOW()
+                    fetched_at = COALESCE($4, NOW())
                 """,
-                normalized, company, json.dumps(payload, default=str),
+                normalized, company, json.dumps(payload, default=str), now,
             )
 
     # --- Memory ledger (see docs/memory.md) ---

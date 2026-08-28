@@ -40,11 +40,14 @@ class StubSlack:
         return {"ok": True}
 
 
-def _job(source_id: str) -> Job:
+def _job(source_id: str, title: str | None = None) -> Job:
     return Job(
         source=Source.GREENHOUSE, source_id=source_id,
         company="gitlab", company_display="GitLab",
-        title="Senior Backend Engineer",
+        # Distinct titles by default: same company+title+week collapses to
+        # one canonical role (storage._dedupe_canonical), which is correct
+        # behavior but would make multi-candidate fixtures ambiguous.
+        title=title or f"Senior Backend Engineer {source_id}",
         location_raw="Remote", remote_status=RemoteStatus.REMOTE,
         description_text=("We hire globally. Python required. "
                           "Salary: $180,000 - $220,000. "
@@ -53,8 +56,9 @@ def _job(source_id: str) -> Job:
     ).finalize()
 
 
-async def _seed(storage: Storage, source_id: str, **overrides) -> int:
-    job = _job(source_id)
+async def _seed(storage: Storage, source_id: str, title: str | None = None,
+                **overrides) -> int:
+    job = _job(source_id, title)
     result = await storage.upsert(job, pre_filter(job, DEFAULT_PROFILE))
     (await storage.get_job(result["id"])).update(overrides)
     return result["id"]

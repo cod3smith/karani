@@ -140,7 +140,7 @@ async def get_company_intel(
                     return {**cached, "cached": True}
 
     payload = await _build_payload(company)
-    await storage.save_company_intel(company, payload)
+    await storage.save_company_intel(company, payload, now=now)
     return {"company_display": company, "payload": payload,
             "fetched_at": now, "cached": False}
 

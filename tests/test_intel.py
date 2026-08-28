@@ -134,3 +134,27 @@ async def test_fetch_warm_candidates_enriches_profiles(monkeypatch):
     assert out == [{"login": "amy", "url": "https://github.com/amy",
                     "source": "github_org_member", "name": "Amy A",
                     "bio": "Kafka pipelines", "blog": "amy.dev"}]
+
+
+@pytest.mark.asyncio
+async def test_cache_timestamp_is_injected_not_wall_clock(fake_probes):
+    """The TTL must key off the caller's clock, not time.now().
+
+    Regression: save_company_intel stamped fetched_at from the wall
+    clock, so TTL tests silently rotted as real time drifted from the
+    fixture date (passed one day, failed the next) — the exact
+    no-clock-in-tests violation CLAUDE.md 6 forbids.
+    """
+    storage = Storage("")
+    await storage.connect()
+    await svc.get_company_intel(storage, "GitLab", now=NOW)
+    stored = await storage.get_company_intel("GitLab")
+    assert stored["fetched_at"] == NOW
+
+    # Exactly at the TTL edge: still fresh one second before, stale after.
+    almost = NOW + timedelta(days=14) - timedelta(seconds=1)
+    assert (await svc.get_company_intel(storage, "GitLab",
+                                        now=almost))["cached"] is True
+    past = NOW + timedelta(days=14, seconds=1)
+    assert (await svc.get_company_intel(storage, "GitLab",
+                                        now=past))["cached"] is False
