@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
@@ -529,6 +530,7 @@ class Storage:
         self._memories: list[dict[str, Any]] = []
         self._next_memory_id = 1
         self._company_intel: dict[str, dict[str, Any]] = {}
+        self._local_locks: set[str] = set()
 
     async def connect(self) -> None:
         if not self.dsn:
@@ -543,6 +545,43 @@ class Storage:
             self._memory = {}
             self._next_id = 1
             log.warning("Postgres unavailable (%s); using in-memory fallback", exc)
+
+    @asynccontextmanager
+    async def run_lock(self, name: str):
+        """Cross-process mutex for billed runs. Yields True if acquired.
+
+        The hourly graph, MCP server, and Slack listener are separate
+        processes against one database: without this, two concurrent
+        qualify/autopilot runs pull the same pending rows and bill twice.
+        Postgres advisory locks are SESSION-scoped, so the lock is held
+        on one dedicated connection for the whole block — never a pooled
+        checkout that could be returned mid-hold. The in-memory fallback
+        guards same-process reentrancy only (no cross-process claim).
+        """
+        key = f"karani:{name}"
+        if self.pool is None:
+            if key in self._local_locks:
+                yield False
+                return
+            self._local_locks.add(key)
+            try:
+                yield True
+            finally:
+                self._local_locks.discard(key)
+            return
+
+        conn = await self.pool.acquire()
+        try:
+            got = await conn.fetchval(
+                "SELECT pg_try_advisory_lock(hashtext($1))", key)
+            try:
+                yield bool(got)
+            finally:
+                if got:
+                    await conn.execute(
+                        "SELECT pg_advisory_unlock(hashtext($1))", key)
+        finally:
+            await self.pool.release(conn)
 
     async def close(self) -> None:
         if self.pool:

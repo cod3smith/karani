@@ -34,6 +34,7 @@ class AutopilotStats:
     drafted: int = 0
     delivered: int = 0
     budget_left: int = 0
+    lock_skipped: bool = False   # another run held the lock
     errors: list[str] = field(default_factory=list)
 
 
@@ -44,9 +45,38 @@ async def run_autopilot(
     min_fit: int | None = None,
     max_drafts: int | None = None,
     daily_cap: int | None = None,
+    allowed_ids: set[int] | None = None,
 ) -> AutopilotStats:
     """Draft + deliver packs for the top candidates, bounded twice:
-    `max_drafts` per run AND `daily_cap` per UTC day across all runs."""
+    `max_drafts` per run AND `daily_cap` per UTC day across all runs.
+
+    Serialized by an advisory lock: the scheduler, MCP server, and Slack
+    listener are separate processes, and two concurrent passes would
+    draft the same candidates twice (roadmap 0.2). A contended call
+    returns immediately with lock_skipped=True.
+    """
+    async with storage.run_lock("autopilot") as acquired:
+        if not acquired:
+            log.warning("autopilot skipped: another pass holds the lock")
+            return AutopilotStats(lock_skipped=True)
+        return await _autopilot_pass(
+            storage, slack=slack, channel=channel,
+            make_qualifier=make_qualifier, load_resume=load_resume,
+            min_fit=min_fit, max_drafts=max_drafts, daily_cap=daily_cap,
+            allowed_ids=allowed_ids,
+        )
+
+
+async def _autopilot_pass(
+    storage: Storage, *,
+    slack, channel: str,
+    make_qualifier=None, load_resume=None,
+    min_fit: int | None = None,
+    max_drafts: int | None = None,
+    daily_cap: int | None = None,
+    allowed_ids: set[int] | None = None,
+) -> AutopilotStats:
+    """The pass itself — always called under the lock."""
     from karani.drafting import build_application_pack
     from karani.slackbridge.blocks import pack_blocks
 
@@ -70,6 +100,12 @@ async def run_autopilot(
 
     rows = await storage.autopilot_candidates(min_fit=min_fit,
                                               limit=budget)
+    if allowed_ids is not None:
+        blocked = [r["id"] for r in rows if r["id"] not in allowed_ids]
+        if blocked:
+            log.info("autopilot: %d candidate(s) blocked by the verify "
+                     "gate: %s", len(blocked), blocked)
+        rows = [r for r in rows if r["id"] in allowed_ids]
     stats.candidates = len(rows)
     if not rows:
         return stats

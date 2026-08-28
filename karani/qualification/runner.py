@@ -31,6 +31,7 @@ class QualifyStats:
     maybe: int = 0
     skipped: int = 0       # verdict = "skip"
     errors: list[str] = field(default_factory=list)
+    lock_skipped: bool = False   # another run held the lock
 
 
 async def _qualify_and_store(
@@ -100,25 +101,32 @@ async def qualify_pending(
     (multi-turn, evidence-gathering). Much more expensive per row; use only
     on top-tier candidates.
     """
-    rows = await storage.pending_qualification(limit=limit, resume_hash=resume.hash)
-    stats = QualifyStats(fetched=len(rows))
-    if not rows:
-        log.info("no pending qualifications")
+    async with storage.run_lock("qualify") as acquired:
+        if not acquired:
+            log.warning("qualify skipped: another qualify run holds the lock")
+            return QualifyStats(lock_skipped=True)
+
+        rows = await storage.pending_qualification(limit=limit,
+                                                   resume_hash=resume.hash)
+        stats = QualifyStats(fetched=len(rows))
+        if not rows:
+            log.info("no pending qualifications")
+            return stats
+
+        # Pull recent user reactions as few-shot taste signal.
+        past_verdicts = await storage.recent_user_verdicts(limit=30)
+        if past_verdicts:
+            log.info("using %d past user_verdict pairs for taste calibration",
+                     len(past_verdicts))
+
+        mode = "AGENT" if agent_mode else "single-turn"
+        log.info("qualifying %d rows [%s] (concurrency=%d, model=%s)",
+                 len(rows), mode, concurrency,
+                 getattr(client, "model_name", "unknown"))
+        sem = asyncio.Semaphore(concurrency)
+        await asyncio.gather(*(
+            _qualify_and_store(client, storage, resume, row, stats, sem,
+                               agent_mode, past_verdicts, memory)
+            for row in rows
+        ))
         return stats
-
-    # Pull recent user reactions as few-shot taste signal.
-    past_verdicts = await storage.recent_user_verdicts(limit=30)
-    if past_verdicts:
-        log.info("using %d past user_verdict pairs for taste calibration",
-                 len(past_verdicts))
-
-    mode = "AGENT" if agent_mode else "single-turn"
-    log.info("qualifying %d rows [%s] (concurrency=%d, model=%s)",
-             len(rows), mode, concurrency, getattr(client, "model_name", "unknown"))
-    sem = asyncio.Semaphore(concurrency)
-    await asyncio.gather(*(
-        _qualify_and_store(client, storage, resume, row, stats, sem,
-                           agent_mode, past_verdicts, memory)
-        for row in rows
-    ))
-    return stats
