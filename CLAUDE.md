@@ -19,10 +19,11 @@ background). It:
    RemoteOK, Himalayas, We Work Remotely, Remotive, aijobs.net).
 2. **Pre-filters** deterministically for role fit + seniority + geo + comp +
    skill overlap. Drops ~95% before any LLM call.
-3. **Qualifies** survivors against Kelyn's resume via LLM (OpenRouter →
-   `moonshotai/kimi-k2-thinking` by default; single-turn or tool-using agent
-   loop). Emits `fit_score`, `verdict`, evidence-backed strengths, gaps,
-   recommended positioning.
+3. **Qualifies** survivors against Kelyn's resume via LLM (local Ollama
+   `qwen3:4b` by default per karani.toml — zero token cost; pluggable
+   providers: openrouter/openai/anthropic/local, ADR 0017; single-turn
+   or tool-using agent loop). Emits `fit_score`, `verdict`,
+   evidence-backed strengths, gaps, recommended positioning.
 4. **Digests** the shortlist as HTML / markdown / text.
 5. **Drafts** cover letters + tailored bullets + application-question answers
    in Kelyn's voice.
@@ -80,8 +81,8 @@ karani/                              (repo)
 │   │      targets.py · orchestrator.py · digest.py · discovery.py · resume.py ·
 │   │      per-source fetchers: greenhouse/lever/ashby/workable + 5 feeds)
 │   ├── qualification/               ← LLM fit tier: prompts (versioned) · client ·
-│   │     providers (openrouter/anthropic/local) · factory (per-task routing) ·
-│   │     tools + agent loop · runner
+│   │     openai_compat base + providers (openrouter/openai/anthropic/local) ·
+│   │     factory (registry + per-task routing) · tools + agent loop · runner
 │   ├── drafting/                    ← pack factory: pipeline.py (draft→humanize→
 │   │     tailor→store, ALL surfaces) · keywords · humanize · resume_tailor ·
 │   │     prep · followup · writers
@@ -339,14 +340,21 @@ that supersedes it. Never delete.
    the tool-set assertion in `test_tool_listing`.
 4. If the tool mirrors a CLI verb, keep the two surfaces in sync.
 
-### Swap LLM providers
-1. Either set `QUAL_PROVIDER=anthropic|local` / `QUAL_MODEL=...` in env, or
-   pass `--provider` / `--model` to `qualify` and `draft`. `local` speaks to
-   any OpenAI-compatible server (Ollama/LM Studio/vLLM) — zero token cost;
-   recommended for bulk qualify, with a hosted model kept for drafting.
-2. To add a *new* provider: subclass into `qualification/<provider>.py`,
-   implement `complete()` (and `chat_turn()` if you want agent-mode
-   support), register in `qualification/factory.py`.
+### Swap LLM providers (ADR 0017)
+1. Per task in karani.toml: `[llm.qualify] provider = "local"` (or
+   `openrouter` / `openai` / `anthropic`), with `model`, `base_url`,
+   `api_key_env`, `max_tokens`, `timeout` knobs. Env overrides
+   (`QUAL_PROVIDER` / `QUAL_MODEL`) and `--provider` / `--model` flags
+   beat config. `local` speaks to any OpenAI-compatible server
+   (Ollama/LM Studio/vLLM) — zero token cost; `openai` + `base_url` +
+   `api_key_env` covers any OpenAI-compatible cloud (Groq, Together)
+   with the key staying in env.
+2. To add a *new* provider: subclass `OpenAICompatQualifier` (or
+   implement `complete()` — and `chat_turn()` for agent mode — from
+   scratch for a different wire format), then
+   `register_provider("name", builder)` in `qualification/factory.py`.
+   Third-party code can call `register_provider` without touching
+   karani.
 
 ---
 

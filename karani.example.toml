@@ -25,9 +25,29 @@ name = "relocation"
 destinations = ["EU", "Japan"]
 requires = ["visa_sponsorship"]
 
+# Per-task LLM routing. Tasks: qualify, draft, humanize, tailor, prep,
+# followup, agent — each falls back to [llm.default]. Providers:
+#   openrouter  hosted, many models (OPENROUTER_API_KEY in .env)
+#   openai      api.openai.com (OPENAI_API_KEY) — or ANY OpenAI-compatible
+#               cloud via base_url + api_key_env, e.g. Groq/Together
+#   anthropic   direct Anthropic API (ANTHROPIC_API_KEY)
+#   local       Ollama / LM Studio / vLLM — no key, zero token cost
 [llm.default]
-provider = "openrouter"        # openrouter | anthropic | local
+provider = "openrouter"
 model = "moonshotai/kimi-k2-thinking"
+
+[llm.qualify]                  # bulk tier — run it free on a local model
+provider = "local"
+model = "qwen3:4b"
+# base_url = "http://localhost:11434/v1"   # LM Studio: localhost:1234/v1
+
+# Any OpenAI-compatible cloud, no code changes — name the env var
+# holding the key; the key itself stays in .env:
+# [llm.draft]
+# provider = "openai"
+# model = "llama-3.3-70b-versatile"
+# base_url = "https://api.groq.com/openai/v1"
+# api_key_env = "GROQ_API_KEY"
 
 [llm.humanize]                 # line-editing needs no big model
 provider = "local"

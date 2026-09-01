@@ -86,7 +86,7 @@ decisions: `docs/adrs/0001-0015`.
 4. **Cross-source dedup** — same `canonical_hash` (company + normalized title + posted-week) is suppressed within a run.
 5. **Upsert** — Postgres, batched via `asyncio.gather` on a bounded semaphore. `active=TRUE`, `closed_at=NULL` on every touch.
 6. **Sweep** — jobs not seen for `stale_job_days` (default 10) get `active=FALSE, closed_at=NOW()`. Prevents applying to dead reqs.
-7. **Qualify** (separate command) — top-scored pending rows go to an LLM with your full resume + hints. Default provider is **OpenRouter** with `moonshotai/kimi-k2-thinking` at `reasoning_effort=high`. Returns `fit_score` (0–100), `verdict` (qualified|maybe|skip), evidence-backed strengths, gaps with mitigations, red flags, why-apply, and recommended positioning. Idempotent per resume hash — change your resume and re-qualify.
+7. **Qualify** (separate command) — top-scored pending rows go to an LLM with your full resume + hints. Any registered provider works (see **LLM providers** below); the reference config runs this tier free on local Ollama. Returns `fit_score` (0–100), `verdict` (qualified|maybe|skip), evidence-backed strengths, gaps with mitigations, red flags, why-apply, and recommended positioning. Idempotent per resume hash — change your resume and re-qualify.
 8. **Deliver** — autopilot posts full application packs to Slack as review cards; digest + worklist summaries push twice daily; the Notion board mirrors every state change.
 9. **Feedback** — `verdict` command records your reaction (`apply|shortlist|later|skip|applied`) so downstream tuning has ground truth.
 
@@ -369,8 +369,18 @@ Every LLM task (qualify, draft, humanize, tailor, prep, followup) is
 independently routable in `karani.toml` `[llm.*]` — run bulk
 qualification on a local model and keep a strong hosted model for
 drafting. Env vars and `--provider`/`--model` flags override per run.
+Providers are a registry (ADR 0017): `openrouter`, `openai`,
+`anthropic`, `local` ship built-in, and
+`karani.qualification.register_provider()` adds your own without
+forking. The recommended default is local qualification:
 
-**OpenRouter (default).** Any OpenRouter model slug works — the current default is `moonshotai/kimi-k2-thinking` because Kimi K2 has strong long-context reasoning and OpenRouter exposes extended thinking via the standard `reasoning.effort` param. To swap models:
+```toml
+[llm.qualify]
+provider = "local"     # Ollama — zero token cost, no key, no outage
+model = "qwen3:4b"
+```
+
+**OpenRouter (built-in fallback).** Any OpenRouter model slug works — the current default is `moonshotai/kimi-k2-thinking` because Kimi K2 has strong long-context reasoning and OpenRouter exposes extended thinking via the standard `reasoning.effort` param. To swap models:
 
 ```bash
 QUAL_PROVIDER=openrouter QUAL_MODEL=moonshotai/kimi-k2-thinking \
@@ -380,6 +390,19 @@ karani qualify --provider openrouter --model anthropic/claude-sonnet-4.5
 ```
 
 Uses only `httpx` — no extra SDK needed. Reasoning tokens count toward completion; the default 16k token cap allows for it.
+
+**OpenAI — and any OpenAI-compatible cloud.** `OPENAI_API_KEY` in
+`.env` gets you api.openai.com; add `base_url` + `api_key_env` (the
+env var's *name* — keys never go in the toml) and the same provider
+speaks to Groq, Together, Mistral, DeepSeek, or a remote vLLM:
+
+```toml
+[llm.draft]
+provider = "openai"
+model = "llama-3.3-70b-versatile"
+base_url = "https://api.groq.com/openai/v1"
+api_key_env = "GROQ_API_KEY"
+```
 
 **Anthropic direct.** Install with `uv sync --extra anthropic`, then:
 
@@ -393,7 +416,7 @@ LM Studio, vLLM, llama.cpp. No API key. Agent mode works with local models
 that support tool calling (qwen3, llama3.3):
 
 ```bash
-QUAL_PROVIDER=local LOCAL_LLM_MODEL=qwen3:32b \
+QUAL_PROVIDER=local LOCAL_LLM_MODEL=qwen3:4b \
   karani qualify --limit 50
 # mix and match: cheap local bulk qualification, strong hosted drafting
 karani draft 12345 --provider openrouter
