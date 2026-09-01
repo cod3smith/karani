@@ -31,6 +31,10 @@ DEFAULT_MAX_TOKENS = int(os.getenv("LOCAL_LLM_MAX_TOKENS", "8000"))
 
 
 class LocalQualifier(OpenAICompatQualifier):
+    # Grammar-constrained JSON mode makes thinking models crawl on local
+    # servers (see openai_compat.force_json); prompt + extractor suffice.
+    force_json = False
+
     def __init__(
         self,
         model: str = DEFAULT_MODEL,

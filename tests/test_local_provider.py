@@ -67,4 +67,7 @@ async def test_local_complete_hits_local_base_url(mock_llm_http):
     assert payload["model"] == "qwen3:8b"
     # OpenRouter's reasoning extension must be omitted for local servers.
     assert "reasoning" not in payload
-    assert payload["response_format"] == {"type": "json_object"}
+    # And so must JSON grammar mode: Ollama implements response_format as
+    # grammar-constrained decoding, which fights thinking models (qwen3
+    # measured ~60x slower). Prompt + extractor handle JSON instead.
+    assert "response_format" not in payload

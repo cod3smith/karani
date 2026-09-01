@@ -40,6 +40,12 @@ DEFAULT_TIMEOUT = 180
 
 
 class OpenAICompatQualifier:
+    # Whether to request response_format={"type": "json_object"}.
+    # Local servers implement it as grammar-constrained decoding, which
+    # fights thinking models (qwen3 measured 60x slower under it) — the
+    # local provider disables it and relies on the prompt + extractor.
+    force_json = True
+
     def __init__(
         self,
         model: str,
@@ -89,7 +95,7 @@ class OpenAICompatQualifier:
             # the model needs freedom to emit tool_calls first.
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
-        elif force_json:
+        elif force_json and self.force_json:
             payload["response_format"] = {"type": "json_object"}
         payload.update(self._extra_payload())
         return payload
