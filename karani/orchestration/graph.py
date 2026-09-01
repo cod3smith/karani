@@ -121,10 +121,21 @@ def build_hunt_graph(deps: HuntDeps):
             )
             return {"fetched": stats.fetched, "qualified": stats.qualified,
                     "maybe": stats.maybe, "skipped": stats.skipped,
-                    "errors": len(stats.errors)}
+                    "errors": len(stats.errors),
+                    "first_error": stats.errors[0] if stats.errors else ""}
         result, err = await _with_retry("qualify", body)
-        return ({"qualify": result} if result is not None
-                else {"errors": [err]})
+        if result is None:
+            return {"errors": [err]}
+        # Per-row failures live inside stats, invisible to the report
+        # node — so a 100%-failed batch (dead API key, provider outage)
+        # looked like success and never alerted. Escalate total failure
+        # into graph error state; partial failures stay informational.
+        first = result.pop("first_error", "")
+        if result["fetched"] > 0 and result["errors"] == result["fetched"]:
+            return {"qualify": result, "errors": [
+                f"qualify: ALL {result['fetched']} rows failed — {first}"
+            ]}
+        return {"qualify": result}
 
     async def verify(state: HuntState) -> dict:
         """Agent-mode double-check of each candidate's claims BEFORE the

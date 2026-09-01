@@ -146,3 +146,42 @@ def test_graph_shape():
     mermaid = graph.get_graph().draw_mermaid()
     for node in ("ingest", "qualify", "autopilot", "notion", "report"):
         assert node in mermaid
+
+
+@pytest.mark.asyncio
+async def test_total_qualify_failure_alerts(monkeypatch):
+    """Regression: a dead API key fails every row *inside* stats, which
+    used to look like success to the report node — 50/50 failures, no
+    alert. Total batch failure must escalate to graph errors."""
+    class DeadKeyStats:
+        fetched, qualified, maybe, skipped = 50, 0, 0, 0
+        errors = ["job_id=1: openrouter 401: User not found"] * 50
+
+    async def dead_qualify(storage, client, resume, **kw):
+        return DeadKeyStats()
+
+    import karani.qualification
+    monkeypatch.setattr(karani.qualification, "qualify_pending",
+                        dead_qualify)
+
+    storage = Storage("")
+    await storage.connect()
+    state = await build_hunt_graph(_deps(storage)).ainvoke({})
+    assert any("ALL 50 rows failed" in e and "401" in e
+               for e in state["errors"])
+    assert state["alerted"] is True
+    assert "401" in StubSlack.posts[0]["text"]
+    # Partial failure stays informational (no alert).
+    class PartialStats:
+        fetched, qualified, maybe, skipped = 10, 8, 1, 0
+        errors = ["job_id=9: transient"]
+
+    async def partial_qualify(storage, client, resume, **kw):
+        return PartialStats()
+
+    monkeypatch.setattr(karani.qualification, "qualify_pending",
+                        partial_qualify)
+    StubSlack.posts = []
+    state = await build_hunt_graph(_deps(storage)).ainvoke({})
+    assert state.get("errors", []) == []
+    assert state["alerted"] is False
