@@ -76,8 +76,8 @@ async def _qualify(limit: int, concurrency: int, provider: str | None,
     print(f"provider={type(client).__name__} model={client.model_name} mode={mode}")
 
     if agent_mode and not hasattr(client, "chat_turn"):
-        print("ERROR: --agent requires an OpenRouter client "
-              "(other providers do not implement chat_turn yet).",
+        print("ERROR: --agent needs a provider with tool-calling support "
+              "(openrouter, openai, or local — not anthropic yet).",
               file=sys.stderr)
         return 2
 
@@ -729,8 +729,9 @@ def _config_check() -> int:
     llm = cfg.llm.for_task("qualify")
     provider = os.getenv("QUAL_PROVIDER") or llm.provider or "openrouter"
     key_for = {"openrouter": "OPENROUTER_API_KEY",
+               "openai": "OPENAI_API_KEY",
                "anthropic": "ANTHROPIC_API_KEY"}
-    need = key_for.get(provider)
+    need = llm.api_key_env or key_for.get(provider)
     if need and not os.getenv(need):
         problems.append(f"provider '{provider}' needs {need} in env")
     if not os.getenv("DATABASE_URL"):

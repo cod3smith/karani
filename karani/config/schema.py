@@ -56,10 +56,18 @@ class TargetCfg(BaseModel, frozen=True):
 
 
 class LlmTask(BaseModel, frozen=True):
-    provider: str | None = None       # openrouter | anthropic | local
+    # Any name in the provider registry: openrouter | openai | anthropic
+    # | local | anything added via register_provider() (ADR 0017).
+    provider: str | None = None
     model: str | None = None
     effort: str | None = None
     max_tokens: int | None = None
+    # For OpenAI-compatible providers: point at Groq/Together/vLLM/...
+    base_url: str | None = None
+    # NAME of the env var holding the key (e.g. "GROQ_API_KEY") — the
+    # key itself never goes in karani.toml.
+    api_key_env: str | None = None
+    timeout: int | None = None
 
 
 class LlmCfg(BaseModel, frozen=True):
@@ -74,12 +82,12 @@ class LlmCfg(BaseModel, frozen=True):
 
     def for_task(self, task: str) -> LlmTask:
         specific: LlmTask = getattr(self, task, LlmTask())
-        return LlmTask(
-            provider=specific.provider or self.default.provider,
-            model=specific.model or self.default.model,
-            effort=specific.effort or self.default.effort,
-            max_tokens=specific.max_tokens or self.default.max_tokens,
-        )
+        merged = {
+            name: getattr(specific, name) if getattr(specific, name)
+            is not None else getattr(self.default, name)
+            for name in LlmTask.model_fields
+        }
+        return LlmTask(**merged)
 
 
 class MemoryCfg(BaseModel, frozen=True):

@@ -12,12 +12,14 @@ from .client import RetryableLLMError
 
 
 DEFAULT_MODEL = os.getenv("QUAL_MODEL", "claude-haiku-4-5-20251001")
+DEFAULT_MAX_TOKENS = int(os.getenv("QUAL_MAX_TOKENS", "2000"))
 
 
 class AnthropicQualifier:
     """Async Anthropic client with retry. Import guarded so it's optional."""
 
-    def __init__(self, model: str = DEFAULT_MODEL, api_key: str | None = None):
+    def __init__(self, model: str = DEFAULT_MODEL, api_key: str | None = None,
+                 *, max_tokens: int = DEFAULT_MAX_TOKENS):
         try:
             from anthropic import AsyncAnthropic
         except ImportError as e:
@@ -27,6 +29,7 @@ class AnthropicQualifier:
             ) from e
         self._client = AsyncAnthropic(api_key=api_key or os.getenv("ANTHROPIC_API_KEY"))
         self.model_name = model
+        self._max_tokens = max_tokens
 
     async def complete(self, system: str, user: str) -> str:
         async for attempt in AsyncRetrying(
@@ -39,7 +42,7 @@ class AnthropicQualifier:
                 try:
                     resp = await self._client.messages.create(
                         model=self.model_name,
-                        max_tokens=2000,
+                        max_tokens=self._max_tokens,
                         system=system,
                         messages=[{"role": "user", "content": user}],
                     )
