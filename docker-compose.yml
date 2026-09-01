@@ -52,7 +52,12 @@ services:
 
   # Local LLM for zero-cost qualification and memory extraction.
   # Opt-in: `docker compose --profile local-llm up -d`.
-  # After first start: `docker exec karani-ollama ollama pull qwen3:32b`
+  # After first start: `docker exec karani-ollama ollama pull qwen3:4b`
+  #
+  # macOS: DO NOT use this container — Docker on Mac has no GPU
+  # passthrough, so inference runs CPU-only in a VM (measured 30-60x
+  # slower than native). Install Ollama.app instead (same port 11434);
+  # this profile is for Linux hosts with --gpus. See docs/operations.md.
   ollama:
     image: ollama/ollama:latest
     container_name: karani-ollama

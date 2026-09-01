@@ -105,6 +105,32 @@ Nairobi timezone (EAT / UTC+3):
 
 Load: `launchctl load ~/Library/LaunchAgents/dev.karani.daily.plist`
 
+## Local LLM (Ollama)
+
+The reference config routes `[llm.qualify]` to Ollama (ADR 0017).
+Operational notes:
+
+- **macOS: run Ollama.app natively, never the compose container.**
+  Docker on Mac has no GPU passthrough — qwen3:4b measured ~30-60x
+  slower CPU-only in the VM. The compose `local-llm` profile is for
+  Linux hosts with `--gpus`. Both bind 11434; stop one before starting
+  the other.
+- **Raise the context window.** Ollama defaults to a 4096-token
+  context and *silently truncates* longer prompts — a qualification
+  prompt (resume + posting + few-shot verdicts) is bigger than that.
+  macOS app: `launchctl setenv OLLAMA_CONTEXT_LENGTH 16384`, then
+  fully restart the app (`killall Ollama ollama` — the menu-bar quit
+  can leave the server running). Verify after one request:
+  `curl -s localhost:11434/api/ps` → `context_length`.
+- **Pin one parallel slot.** With `OLLAMA_NUM_PARALLEL` > 1 the
+  context window is split per slot, quietly undoing the point above:
+  `launchctl setenv OLLAMA_NUM_PARALLEL 1`. Concurrent qualify workers
+  then queue server-side, which is fine.
+- **No JSON grammar mode.** `LocalQualifier` deliberately omits
+  `response_format=json_object` — Ollama implements it as
+  grammar-constrained decoding, which fights thinking models
+  (measured ~60x slowdown on qwen3). Don't add it back.
+
 ## Secrets rotation
 
 **Rotate every 90 days** for hygiene, immediately on any exposure:
