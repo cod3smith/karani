@@ -1,9 +1,10 @@
 """Agent loop: model → tool_calls → execute → append → repeat → final JSON.
 
-Only OpenRouter is wired for tool-use today. The loop takes any object that
-exposes `chat_turn(messages, tools) -> {content, tool_calls, finish_reason}`
-(matches `OpenRouterQualifier.chat_turn`), so a fake can be swapped in for
-tests without extra infrastructure.
+The loop takes any object that exposes `chat_turn(messages, tools) ->
+{content, tool_calls, finish_reason}`. Every OpenAI-compatible provider
+(openrouter, openai, local) inherits that from `OpenAICompatQualifier`,
+so agent mode works with any of them whose model supports tool calling;
+a fake can be swapped in for tests without extra infrastructure.
 """
 from __future__ import annotations
 

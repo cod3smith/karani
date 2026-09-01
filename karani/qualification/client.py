@@ -1,8 +1,9 @@
 """Shared qualification plumbing — provider-agnostic.
 
-Providers live in `qualification/openrouter.py` and `qualification/anthropic.py`
-and expose the `QualifierClient` protocol below. Use `qualification.factory.
-get_qualifier()` to pick one based on env.
+Providers live in `qualification/{openrouter,openai,local,anthropic}.py`
+and expose the `QualifierClient` protocol below (ADR 0017). Use
+`qualification.factory.get_qualifier()` to pick one from config/env, or
+`register_provider()` to plug in your own.
 """
 from __future__ import annotations
 

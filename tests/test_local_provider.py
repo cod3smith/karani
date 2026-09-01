@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-import karani.qualification.openrouter as openrouter_mod
+import karani.qualification.openai_compat as compat_mod
 from karani.qualification.factory import get_qualifier
 from karani.qualification.local import LocalQualifier
 
@@ -44,7 +44,7 @@ def mock_llm_http(monkeypatch):
     transport = httpx.MockTransport(handler)
     real_client = httpx.AsyncClient
     monkeypatch.setattr(
-        openrouter_mod, "httpx",
+        compat_mod, "httpx",
         SimpleNamespace(
             AsyncClient=lambda **kw: real_client(transport=transport, **kw),
             TransportError=httpx.TransportError,

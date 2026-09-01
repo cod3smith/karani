@@ -35,6 +35,7 @@ def test_openrouter_records_usage_on_response(monkeypatch):
 
     import httpx
 
+    import karani.qualification.openai_compat as compat_mod
     import karani.qualification.openrouter as mod
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -46,7 +47,7 @@ def test_openrouter_records_usage_on_response(monkeypatch):
 
     real = httpx.AsyncClient
     transport = httpx.MockTransport(handler)
-    monkeypatch.setattr(mod, "httpx", SimpleNamespace(
+    monkeypatch.setattr(compat_mod, "httpx", SimpleNamespace(
         AsyncClient=lambda **kw: real(transport=transport, **kw),
         TransportError=httpx.TransportError,
         TimeoutException=httpx.TimeoutException))
