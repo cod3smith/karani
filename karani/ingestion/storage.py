@@ -587,17 +587,27 @@ class Storage:
             return
 
         conn = await self.pool.acquire()
+        got = False
         try:
             got = await conn.fetchval(
                 "SELECT pg_try_advisory_lock(hashtext($1))", key)
-            try:
-                yield bool(got)
-            finally:
-                if got:
+            yield bool(got)
+        finally:
+            # Best-effort unlock: the lock is session-scoped, so if the
+            # connection died while we held it (Neon idle-kills sessions
+            # during long local-inference passes), Postgres has already
+            # released it — a failed unlock must not mask the run's result.
+            if got:
+                try:
                     await conn.execute(
                         "SELECT pg_advisory_unlock(hashtext($1))", key)
-        finally:
-            await self.pool.release(conn)
+                except Exception as exc:
+                    log.warning("advisory unlock for %s failed "
+                                "(session likely died mid-run): %s", key, exc)
+            try:
+                await self.pool.release(conn)
+            except Exception:
+                pass
 
     async def close(self) -> None:
         if self.pool:

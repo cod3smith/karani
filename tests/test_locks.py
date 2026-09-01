@@ -76,3 +76,33 @@ async def test_run_autopilot_skips_when_locked():
     assert stats.lock_skipped is True
     assert stats.drafted == 0
     assert stats.delivered == 0
+
+@pytest.mark.asyncio
+async def test_run_lock_survives_dead_session_at_unlock():
+    """Regression: a long local-inference pass outlives Neon's idle
+    timeout; the unlock then runs on a dead connection. The lock is
+    session-scoped (Postgres freed it with the session), so a failed
+    unlock must not mask the run's result."""
+    class DeadConn:
+        async def fetchval(self, sql, *args):
+            return True                     # lock acquired
+
+        async def execute(self, sql, *args):
+            raise RuntimeError("connection has been released back to the pool")
+
+    class StubPool:
+        def __init__(self):
+            self.released = False
+
+        async def acquire(self):
+            return DeadConn()
+
+        async def release(self, conn):
+            self.released = True
+
+    storage = Storage("")
+    await storage.connect()
+    storage.pool = StubPool()
+    async with storage.run_lock("qualify") as got:   # must not raise
+        assert got is True
+    assert storage.pool.released is True
