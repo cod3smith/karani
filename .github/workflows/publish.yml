@@ -1,22 +1,90 @@
 name: publish
 
-# Publishes to PyPI on a GitHub release, via PyPI Trusted Publishing
-# (OIDC) — no API token stored in repo secrets. One-time setup on
-# pypi.org: project karani -> Publishing -> add this repo + workflow.
+# Tag-triggered PyPI release. The whole flow is:
+#
+#     make release VERSION=0.4.1
+#
+# which bumps pyproject, commits, tags v0.4.1 and pushes — then this
+# workflow tests, builds, publishes to PyPI, and cuts the GitHub
+# release. Auth is PyPI Trusted Publishing (OIDC): no API token is
+# stored anywhere. One-time setup on pypi.org -> karani -> Publishing:
+# owner `cod3smith`, repo `karani`, workflow `publish.yml`,
+# environment `pypi`.
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:      # manual re-run; skips the tag/version guard
 
 jobs:
-  pypi:
+  build:
     runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Build
+        with:
+          python-version: "3.13"
+
+      # A tag is a promise about a version — refuse to publish v0.4.1
+      # from a tree that says 0.4.0.
+      - name: Tag matches pyproject version
+        if: github.event_name == 'push'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "tag=$tag pyproject=$pkg"
+          test "$tag" = "$pkg"
+
+      - name: Install
+        run: uv sync --all-extras
+      - name: Lint
+        run: uv run ruff check karani tests
+      - name: Tests
+        run: uv run pytest tests -q
+
+      - name: Build wheel + sdist
         run: uv build
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+
+      # Same smoke as ci.yml: a wheel that cannot start karani in a
+      # clean venv must never reach PyPI, where versions are immutable.
+      - name: Smoke-test the wheel
+        run: |
+          uv venv /tmp/smoke
+          uv pip install --python /tmp/smoke/bin/python dist/*.whl
+          /tmp/smoke/bin/karani --version
+          KARANI_HOME=/tmp/kh /tmp/smoke/bin/karani init --yes
+          KARANI_HOME=/tmp/kh KARANI_CONFIG=/tmp/kh/karani.toml \
+            /tmp/smoke/bin/karani config check
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write       # OIDC token for Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: pypi
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*

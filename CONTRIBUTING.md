@@ -66,3 +66,26 @@ criteria per item. Good first contributions:
 - [ ] New capability? Landed on Storage/runner first, all surfaces synced
 - [ ] Docs updated in the same PR (`CLAUDE.md` rule: drift is worse than
       no docs)
+
+## Releasing (maintainers)
+
+One command, from a clean `main`:
+
+```bash
+make release VERSION=0.4.1     # or: make release BUMP=patch
+```
+
+It bumps `pyproject.toml`, re-runs lint and tests, commits, tags
+`v0.4.1`, and pushes. The `publish` workflow then does the rest on its
+own: lint + tests + wheel smoke in a clean venv, build, upload to PyPI,
+and cut the GitHub release with the artifacts attached.
+
+Auth is [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+— GitHub mints a short-lived OIDC token per run, so there is no API
+token in repo secrets to leak or rotate. The publish job runs in the
+`pypi` environment; adding a required reviewer there turns automatic
+publishing into approve-then-publish.
+
+PyPI versions are immutable — a bad `0.4.1` can only be yanked, never
+replaced. That is why the workflow runs the full suite and installs the
+built wheel before it uploads anything.
