@@ -32,7 +32,7 @@ release:
 	uv run ruff check karani tests
 	uv run pytest tests -q
 	@v=$$(uv version --short); \
-	 git commit -am "Release $$v" && \
+	 git diff --quiet || git commit -am "Release $$v"; \
 	 git tag -a "v$$v" -m "karani $$v" && \
 	 git push origin main && \
 	 git push origin "v$$v" && \
