@@ -755,14 +755,23 @@ def _install_watchdog(agents, workdir: str, logs: str, subprocess) -> None:
     from karani.orchestration.graph import pass_marker_path
     from karani.slackbridge import configured_channel
 
+    # launchd runs with no working directory, so every path baked into
+    # the job must be absolute — a relative one makes it refuse to spawn
+    # (EX_CONFIG) or hunt for a marker that is not there.
+    work = Path(workdir).resolve()
+    marker = Path(pass_marker_path())
+    if not marker.is_absolute():
+        marker = work / marker
+    log_dir = Path(logs) if Path(logs).is_absolute() else work / logs
+
     home = karani_home()
     home.mkdir(parents=True, exist_ok=True)
     script = home / "watchdog.sh"
     script.write_text(
         _resource("watchdog.sh")
-        .replace("__MARKER__", str(pass_marker_path()))
+        .replace("__MARKER__", str(marker))
         .replace("__MAX_AGE_H__", os.getenv("KARANI_WATCHDOG_MAX_AGE_H", "4"))
-        .replace("__ENV_FILE__", str(Path(workdir) / ".env"))
+        .replace("__ENV_FILE__", str(work / ".env"))
         .replace("__CHANNEL__", configured_channel() or "")
     )
     script.chmod(0o755)
@@ -770,7 +779,7 @@ def _install_watchdog(agents, workdir: str, logs: str, subprocess) -> None:
     plist = agents / "com.karani.watchdog.plist"
     plist.write_text(_resource("karani.watchdog.plist.template")
                      .replace("__SCRIPT__", str(script))
-                     .replace("__LOGS__", logs))
+                     .replace("__LOGS__", str(log_dir)))
     subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
     subprocess.run(["launchctl", "load", "-w", str(plist)], check=True)
 

@@ -176,3 +176,22 @@ def test_hosted_qualify_skips_ollama_env(tmp_path, monkeypatch):
         assert not (agents / "com.karani.ollama-env.plist").exists()
     finally:
         reload_config()
+
+
+def test_watchdog_paths_are_absolute(tmp_path, monkeypatch):
+    """launchd has no working directory: a relative StandardErrorPath
+    makes it refuse to spawn the job (EX_CONFIG/78), and a relative
+    marker path would never be found — a permanent false alarm.
+
+    Repo mode is where this bites: there `_workdir_and_logs()` returns a
+    bare "logs", while an installed layout is absolute already."""
+    (tmp_path / "karani.toml").write_text("version = 1\n")   # repo mode
+    (tmp_path / "logs").mkdir()
+    agents = _schedule_into(tmp_path, monkeypatch)
+    script = (tmp_path / "home" / ".karani" / "watchdog.sh").read_text()
+    marker = [ln for ln in script.splitlines() if ln.startswith("MARKER=")][0]
+    assert '="/' in marker, f"marker path must be absolute: {marker}"
+
+    body = (agents / "com.karani.watchdog.plist").read_text()
+    err = body.split("<key>StandardErrorPath</key>")[1].split("<string>")[1]
+    assert err.startswith("/"), f"log path must be absolute: {err}"
