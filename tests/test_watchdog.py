@@ -128,3 +128,51 @@ def test_schedule_installs_the_watchdog(monkeypatch, tmp_path):
     body = plist.read_text()
     assert str(script) in body
     assert "__MARKER__" not in script.read_text()   # placeholders rendered
+
+
+# --- ollama environment persistence ---
+
+def _schedule_into(tmp_path, monkeypatch):
+    import subprocess
+
+    import karani.cli as cli
+    home = tmp_path / "home"
+    (home / "Library" / "LaunchAgents").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
+    monkeypatch.setattr(subprocess, "run",
+                        lambda *a, **kw: subprocess.CompletedProcess(a, 0))
+    monkeypatch.chdir(tmp_path)
+    assert cli._schedule() == 0
+    return home / "Library" / "LaunchAgents"
+
+
+def test_local_qualify_gets_persistent_ollama_env(tmp_path, monkeypatch):
+    """launchctl setenv dies at reboot, and Ollama reads its context size
+    only from the launchd environment — losing it silently truncates every
+    qualification prompt back to 4096 tokens."""
+    from karani.config import reload_config
+    cfg = tmp_path / "karani.toml"
+    cfg.write_text('version = 1\n[llm.qualify]\nprovider = "local"\n')
+    reload_config(cfg)
+    try:
+        agents = _schedule_into(tmp_path, monkeypatch)
+        plist = agents / "com.karani.ollama-env.plist"
+        assert plist.exists()
+        body = plist.read_text()
+        assert "OLLAMA_CONTEXT_LENGTH 16384" in body
+        assert "OLLAMA_NUM_PARALLEL 1" in body
+    finally:
+        reload_config()
+
+
+def test_hosted_qualify_skips_ollama_env(tmp_path, monkeypatch):
+    from karani.config import reload_config
+    cfg = tmp_path / "karani.toml"
+    cfg.write_text('version = 1\n[llm.qualify]\nprovider = "openrouter"\n')
+    reload_config(cfg)
+    try:
+        agents = _schedule_into(tmp_path, monkeypatch)
+        assert not (agents / "com.karani.ollama-env.plist").exists()
+    finally:
+        reload_config()

@@ -775,6 +775,29 @@ def _install_watchdog(agents, workdir: str, logs: str, subprocess) -> None:
     subprocess.run(["launchctl", "load", "-w", str(plist)], check=True)
 
 
+def _install_ollama_env(agents, subprocess) -> None:
+    """Pin Ollama's context window across reboots, when qualify is local.
+
+    `launchctl setenv` is lost on reboot and Ollama.app reads its config
+    only from the launchd environment, so the window silently falls back
+    to 4096 and truncates qualification prompts (docs/operations.md).
+    """
+    from karani.config import get_config
+    provider = (os.getenv("QUAL_PROVIDER")
+                or get_config().llm.for_task("qualify").provider or "")
+    if provider.lower() != "local":
+        return
+
+    plist = agents / "com.karani.ollama-env.plist"
+    plist.write_text(
+        _resource("karani.ollama-env.plist.template")
+        .replace("__CONTEXT__", os.getenv("OLLAMA_CONTEXT_LENGTH", "16384"))
+        .replace("__PARALLEL__", os.getenv("OLLAMA_NUM_PARALLEL", "1"))
+    )
+    subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
+    subprocess.run(["launchctl", "load", "-w", str(plist)], check=True)
+
+
 def _schedule() -> int:
     import subprocess
     from pathlib import Path
@@ -794,6 +817,7 @@ def _schedule() -> int:
         subprocess.run(["launchctl", "load", "-w", str(plist)], check=True)
 
     _install_watchdog(agents, workdir, logs, subprocess)
+    _install_ollama_env(agents, subprocess)
     print("scheduled: com.karani.hourly (every hour) + com.karani.daily "
           "(06:00/13:00) + com.karani.watchdog (hourly)")
     print(f"logs: {logs}")

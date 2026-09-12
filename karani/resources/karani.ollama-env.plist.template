@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.karani.ollama-env</string>
+  <!-- `launchctl setenv` does not survive a reboot, and Ollama.app reads
+       its configuration only from the launchd environment. Without this
+       the context window silently reverts to 4096 and truncates every
+       qualification prompt (docs/operations.md). Runs once at login,
+       before Ollama.app starts. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>launchctl setenv OLLAMA_CONTEXT_LENGTH __CONTEXT__ &amp;&amp; launchctl setenv OLLAMA_NUM_PARALLEL __PARALLEL__</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
