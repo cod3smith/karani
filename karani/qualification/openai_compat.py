@@ -46,6 +46,11 @@ class OpenAICompatQualifier:
     # local provider disables it and relies on the prompt + extractor.
     force_json = True
 
+    # How many requests this provider serves in parallel — the runner's
+    # default fan-out (see qualification.runner.resolve_concurrency).
+    # Hosted endpoints handle several; a local server does not.
+    max_parallel = 3
+
     def __init__(
         self,
         model: str,

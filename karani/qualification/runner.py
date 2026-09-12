@@ -82,20 +82,38 @@ async def _qualify_and_store(
             log.exception("qualify failed for job_id=%s", row.get("id"))
 
 
+DEFAULT_CONCURRENCY = 3
+
+
+def resolve_concurrency(explicit: int | None, client: object) -> int:
+    """How many rows to have in flight at once.
+
+    Explicit argument wins; otherwise ask the provider. A local server
+    pinned to one slot (OLLAMA_NUM_PARALLEL=1, which is what keeps the
+    full context window intact) serves requests serially, so fanning out
+    only parks rows in its queue until the client timeout kills them.
+    """
+    if explicit is not None:
+        return max(1, explicit)
+    return max(1, int(getattr(client, "max_parallel", DEFAULT_CONCURRENCY)))
+
+
 async def qualify_pending(
     storage: Storage,
     client: QualifierClient,
     resume: ResumeProfile,
     *,
     limit: int = 50,
-    concurrency: int = 3,
+    concurrency: int | None = None,
     agent_mode: bool = False,
     memory: "MemoryManager | None" = None,
 ) -> QualifyStats:
     """Qualify up to `limit` pending rows. Idempotent per resume hash.
 
-    Concurrency default is 3 — thinking models are slow and hitting them
-    at 5–10 in parallel usually just triggers rate limits.
+    Concurrency defaults to what the provider can actually serve (see
+    `resolve_concurrency`): 3 for hosted providers — thinking models are
+    slow and hitting them at 5-10 in parallel usually just triggers rate
+    limits — but 1 for a local single-slot server.
 
     When `agent_mode=True`, each row goes through the tool-using agent loop
     (multi-turn, evidence-gathering). Much more expensive per row; use only
@@ -119,6 +137,7 @@ async def qualify_pending(
             log.info("using %d past user_verdict pairs for taste calibration",
                      len(past_verdicts))
 
+        concurrency = resolve_concurrency(concurrency, client)
         mode = "AGENT" if agent_mode else "single-turn"
         log.info("qualifying %d rows [%s] (concurrency=%d, model=%s)",
                  len(rows), mode, concurrency,

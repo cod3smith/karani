@@ -35,6 +35,10 @@ class LocalQualifier(OpenAICompatQualifier):
     # servers (see openai_compat.force_json); prompt + extractor suffice.
     force_json = False
 
+    # One model, one GPU: Ollama serves these serially (and splitting the
+    # context across parallel slots is worse — see docs/operations.md).
+    max_parallel = 1
+
     def __init__(
         self,
         model: str = DEFAULT_MODEL,
