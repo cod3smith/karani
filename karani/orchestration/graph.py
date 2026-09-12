@@ -42,6 +42,36 @@ class HuntState(TypedDict, total=False):
     errors: Annotated[list[str], _merge_errors]
 
 
+def pass_marker_path():
+    """File a completed pass timestamps, for the external watchdog.
+
+    The in-process heartbeat cannot detect the failure that actually
+    happened (the venv holding karani was deleted, killing the hourly
+    hunt AND the daily agent that checks on it). The watchdog is plain
+    shell and reads only this file — so it survives anything that breaks
+    Python. Env override keeps it testable and relocatable.
+    """
+    from pathlib import Path
+
+    from karani.config.loader import karani_home
+    override = os.getenv("KARANI_PASS_MARKER")
+    if override:
+        return Path(override)
+    logs = Path("logs") if Path("logs").is_dir() else karani_home() / "logs"
+    return logs / ".last-pass"
+
+
+def mark_pass_complete() -> None:
+    """Record that a pass finished. Never raises — bookkeeping must not
+    sink a hunt (same rule as the run ledger)."""
+    try:
+        path = pass_marker_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(datetime.now(timezone.utc).isoformat())
+    except Exception:
+        log.exception("pass marker write failed")
+
+
 def _qualify_limit() -> int:
     """Rows per pass: env > karani.toml [hunt] > built-in. Read at
     construction, not import, so reload_config() is honored."""
@@ -313,6 +343,10 @@ async def run_hunt_once() -> HuntState:
             state["run_recorded"] = True
         except Exception:   # bookkeeping must never sink a hunt
             log.exception("run ledger write failed")
+        # The pass ran to completion — tell the external watchdog. Row-level
+        # errors are alerted by the report node; this marker answers only
+        # "is the scheduler alive at all?".
+        mark_pass_complete()
         return state
     finally:
         await storage.close()

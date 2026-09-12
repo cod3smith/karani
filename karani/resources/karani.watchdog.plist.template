@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.karani.watchdog</string>
+  <!-- Plain /bin/sh: no venv, no interpreter that a cleanup can delete. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>__SCRIPT__</string>
+  </array>
+  <key>StandardErrorPath</key>
+  <string>__LOGS__/watchdog.log</string>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>

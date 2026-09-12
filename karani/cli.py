@@ -742,6 +742,39 @@ def _config_check() -> int:
     return 0
 
 
+def _install_watchdog(agents, workdir: str, logs: str, subprocess) -> None:
+    """Install the external dead-man's switch.
+
+    It lives outside the repo (in ~/.karani) and runs under /bin/sh, so
+    deleting the virtualenv — the failure that hid an 8-day outage —
+    cannot take the alarm down with the alarm's subject.
+    """
+    from pathlib import Path
+
+    from karani.config.loader import karani_home
+    from karani.orchestration.graph import pass_marker_path
+    from karani.slackbridge import configured_channel
+
+    home = karani_home()
+    home.mkdir(parents=True, exist_ok=True)
+    script = home / "watchdog.sh"
+    script.write_text(
+        _resource("watchdog.sh")
+        .replace("__MARKER__", str(pass_marker_path()))
+        .replace("__MAX_AGE_H__", os.getenv("KARANI_WATCHDOG_MAX_AGE_H", "4"))
+        .replace("__ENV_FILE__", str(Path(workdir) / ".env"))
+        .replace("__CHANNEL__", configured_channel() or "")
+    )
+    script.chmod(0o755)
+
+    plist = agents / "com.karani.watchdog.plist"
+    plist.write_text(_resource("karani.watchdog.plist.template")
+                     .replace("__SCRIPT__", str(script))
+                     .replace("__LOGS__", logs))
+    subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
+    subprocess.run(["launchctl", "load", "-w", str(plist)], check=True)
+
+
 def _schedule() -> int:
     import subprocess
     from pathlib import Path
@@ -759,8 +792,10 @@ def _schedule() -> int:
         subprocess.run(["launchctl", "unload", str(plist)],
                        capture_output=True)
         subprocess.run(["launchctl", "load", "-w", str(plist)], check=True)
+
+    _install_watchdog(agents, workdir, logs, subprocess)
     print("scheduled: com.karani.hourly (every hour) + com.karani.daily "
-          "(06:00/13:00)")
+          "(06:00/13:00) + com.karani.watchdog (hourly)")
     print(f"logs: {logs}")
     print("run one now: launchctl start com.karani.hourly")
     return 0
