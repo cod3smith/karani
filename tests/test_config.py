@@ -232,3 +232,31 @@ def test_no_raw_delivery_env_reads_outside_helpers():
                  if "loader.py" not in line and "listener.py" not in line
                  and "sync.py" not in line and "__init__.py" not in line]
     assert offenders == [], offenders
+
+
+def test_hunt_qualify_limit_reaches_the_graph(tmp_path):
+    """Regression: [hunt] qualify_limit existed in the schema but nothing
+    read it — the graph took only HUNT_QUALIFY_LIMIT from env, so setting
+    it in karani.toml silently did nothing."""
+    cfg_file = _write(tmp_path, """
+version = 1
+[hunt]
+qualify_limit = 15
+""")
+    reload_config(cfg_file)
+    from karani.orchestration.graph import HuntDeps
+    assert HuntDeps(storage=None, make_qualifier=lambda: None,
+                    load_resume=lambda: None).qualify_limit == 15
+
+
+def test_hunt_qualify_limit_env_still_wins(tmp_path, monkeypatch):
+    monkeypatch.setenv("HUNT_QUALIFY_LIMIT", "7")
+    cfg_file = _write(tmp_path, """
+version = 1
+[hunt]
+qualify_limit = 15
+""")
+    reload_config(cfg_file)
+    from karani.orchestration.graph import HuntDeps
+    assert HuntDeps(storage=None, make_qualifier=lambda: None,
+                    load_resume=lambda: None).qualify_limit == 7

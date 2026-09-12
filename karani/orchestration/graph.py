@@ -42,6 +42,15 @@ class HuntState(TypedDict, total=False):
     errors: Annotated[list[str], _merge_errors]
 
 
+def _qualify_limit() -> int:
+    """Rows per pass: env > karani.toml [hunt] > built-in. Read at
+    construction, not import, so reload_config() is honored."""
+    from karani.config import get_config
+    from karani.config.loader import resolve
+    return int(resolve("HUNT_QUALIFY_LIMIT", get_config().hunt.qualify_limit,
+                       50))
+
+
 @dataclass
 class HuntDeps:
     """Everything the nodes need, injectable for tests."""
@@ -51,7 +60,7 @@ class HuntDeps:
     slack_factory: Callable[[], Any] | None = None
     make_agent_qualifier: Callable[[], Any] | None = None
     channel: str = ""
-    qualify_limit: int = int(os.getenv("HUNT_QUALIFY_LIMIT", "50"))
+    qualify_limit: int = field(default_factory=lambda: _qualify_limit())
     memory: Any = None
     extras: dict[str, Any] = field(default_factory=dict)
 
