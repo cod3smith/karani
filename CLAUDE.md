@@ -75,7 +75,8 @@ karani/                              (repo)
 ├── karani/                          ← THE installable package
 │   ├── cli.py                       ← `karani <verb>` — ~30 verbs, single entry point
 │   ├── config/                      ← karani.toml schema + loader + `karani init` wizard (ADR 0015)
-│   ├── resources/                   ← compose file, launchd templates, example toml (in-wheel)
+│   ├── resources/                   ← compose file, launchd templates (incl. watchdog +
+│   │     ollama-env), watchdog.sh, example toml (in-wheel)
 │   ├── ingestion/                   ← fetch → classify → pre-filter → store → sweep
 │   │     (config.py signals · profile.py · filters.py · roles.py · storage.py ·
 │   │      targets.py · orchestrator.py · digest.py · discovery.py · resume.py ·
@@ -99,9 +100,9 @@ karani/                              (repo)
 ├── docker-compose.yml               ← dev infra (pgvector db :5433, minio :9010, ollama)
 ├── data/                            ← resume.md (yours, gitignored) + .example
 ├── drafts/                          ← generated packs (gitignored)
-├── tests/                           ← 217 deterministic + 12 Postgres-marked (`make test-pg`)
+├── tests/                           ← 245 deterministic + 12 Postgres-marked (`make test-pg`)
 └── docs/                            ← vision · architecture · roadmap · memory ·
-      conventions · operations · adrs/ (0001-0016)
+      conventions · operations · adrs/ (0001-0018)
 ```
 
 ---
@@ -231,7 +232,7 @@ Full details in `docs/conventions.md`. The one-liners:
   suite + ruff + a wheel smoke on 3.11/3.12/3.13, with coverage to
   Coveralls (`.github/workflows/ci.yml`).
 - Every new module needs a smoke test at minimum.
-- All 158 existing tests are deterministic (no network, no clock). Keep it
+- All 245 existing tests are deterministic (no network, no clock). Keep it
   that way — use fake clients for LLM calls (see `tests/test_qualification.py`
   and `tests/test_agent.py`), and `httpx.MockTransport` for HTTP (see
   `tests/test_e2e_pipeline.py`).
@@ -339,6 +340,21 @@ that supersedes it. Never delete.
 3. Add a test in `tests/test_mcp_server.py` via `app.call_tool`, and update
    the tool-set assertion in `test_tool_listing`.
 4. If the tool mirrors a CLI verb, keep the two surfaces in sync.
+
+### Install / repair the scheduler (ADR 0018)
+1. The scheduler must NOT run from the repo `.venv` — a `find -name
+   .venv | xargs rm -rf` cleanup deleted it once and karani was dead
+   for 8 days at exit 127. Install as a tool:
+   `uv tool install --editable ".[slack,orchestrator,artifacts,memory,anthropic]"`
+   then `karani hunt` (renders + loads the launchd agents).
+2. `karani hunt` also installs `com.karani.watchdog` — POSIX sh + curl
+   in `~/.karani/`, reading only `logs/.last-pass`. It must never
+   import karani, touch a venv, or open the database; a test enforces
+   that. Every path baked into a launchd job must be ABSOLUTE (launchd
+   has no cwd; a relative one fails to spawn with exit 78).
+3. Liveness lesson: the in-process heartbeat (ADR 0016) runs from the
+   same binary as the hunt, so it cannot survive a shared-runtime
+   failure. Keep the two checks independent.
 
 ### Swap LLM providers (ADR 0017)
 1. Per task in karani.toml: `[llm.qualify] provider = "local"` (or

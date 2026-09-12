@@ -105,6 +105,43 @@ Nairobi timezone (EAT / UTC+3):
 
 Load: `launchctl load ~/Library/LaunchAgents/dev.karani.daily.plist`
 
+## Scheduler install and liveness (ADR 0018)
+
+The scheduler must not run from the repo's `.venv` — a routine
+`find ~ -name .venv | xargs rm -rf` deleted it once and karani was
+silently dead for eight days. Install it as a tool instead:
+
+```bash
+uv tool install --editable ".[slack,orchestrator,artifacts,memory,anthropic]"
+karani hunt        # renders + loads the launchd agents from ~/.local/bin/karani
+```
+
+`karani hunt` installs three agents (plus a fourth when qualify is
+local):
+
+| Agent | Interval | What it does |
+|---|---|---|
+| `com.karani.hourly` | 1h | the hunt pass; timestamps `logs/.last-pass` |
+| `com.karani.daily` | 06:00, 13:00 | digest + next-actions to Slack, in-process heartbeat |
+| `com.karani.watchdog` | 1h | `sh` + `curl`; alerts if the marker is stale |
+| `com.karani.ollama-env` | at login | re-pins the Ollama env vars |
+
+Editable tool installs track source edits, but **a dependency change
+needs `uv tool install --force --editable ...` again**.
+
+Checking on it:
+
+```bash
+launchctl list | grep karani        # exit 0 = healthy; 127 = binary gone
+cat logs/.last-pass                 # when the last pass completed
+tail logs/watchdog.log              # what the watchdog has alerted about
+sh ~/.karani/watchdog.sh            # run the check by hand
+```
+
+Recovering after the venv or tool env is deleted: re-run the two
+install commands above. Nothing else is lost — Postgres, MinIO, and
+the config are all outside the environment.
+
 ## Local LLM (Ollama)
 
 The reference config routes `[llm.qualify]` to Ollama (ADR 0017).
@@ -122,10 +159,20 @@ Operational notes:
   fully restart the app (`killall Ollama ollama` — the menu-bar quit
   can leave the server running). Verify after one request:
   `curl -s localhost:11434/api/ps` → `context_length`.
+  **`launchctl setenv` does not survive a reboot**, which is why
+  `karani hunt` installs `com.karani.ollama-env` to re-apply it at
+  login when qualify runs locally.
 - **Pin one parallel slot.** With `OLLAMA_NUM_PARALLEL` > 1 the
   context window is split per slot, quietly undoing the point above:
-  `launchctl setenv OLLAMA_NUM_PARALLEL 1`. Concurrent qualify workers
-  then queue server-side, which is fine.
+  `launchctl setenv OLLAMA_NUM_PARALLEL 1`. Qualification matches its
+  fan-out to this (`LocalQualifier.max_parallel = 1`); when it did
+  not, queued rows burned the client timeout and one pass took 13.5
+  hours.
+- **Budget the batch.** qwen3:4b runs ~75-170s per row on an M-series
+  laptop (~19 tok/s, and its thinking trace cannot usefully be
+  disabled — `think: false` just moves the same volume into the
+  visible answer). Keep `[hunt] qualify_limit` low enough that a pass
+  fits the hour: 15 rows ≈ 30 minutes.
 - **No JSON grammar mode.** `LocalQualifier` deliberately omits
   `response_format=json_object` — Ollama implements it as
   grammar-constrained decoding, which fights thinking models
