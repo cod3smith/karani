@@ -10,7 +10,10 @@ from __future__ import annotations
 import threading
 
 _lock = threading.Lock()
-_totals = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
+_totals = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0,
+           # Cache reads are billed input at ~0.1x, writes at 1.25x — the
+           # cost model needs them separately from plain input tokens.
+           "cache_read_tokens": 0, "cache_write_tokens": 0}
 
 
 def record(usage: dict | None) -> None:
@@ -20,6 +23,8 @@ def record(usage: dict | None) -> None:
     with _lock:
         _totals["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
         _totals["completion_tokens"] += int(usage.get("completion_tokens") or 0)
+        _totals["cache_read_tokens"] += int(usage.get("cache_read_tokens") or 0)
+        _totals["cache_write_tokens"] += int(usage.get("cache_write_tokens") or 0)
         _totals["calls"] += 1
 
 
