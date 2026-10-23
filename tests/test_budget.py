@@ -176,3 +176,42 @@ def test_recovery_is_announced_too():
     msg = budget.pending_announcement()
     assert msg and "restored" in msg.lower()
     assert budget.pending_announcement() is None
+
+
+def test_fallback_drops_the_hosted_model_name(tmp_path, monkeypatch):
+    """Caught by smoke, missed by isinstance: the guard swapped the
+    provider but kept `claude-haiku-5-5` as the model, so Ollama would
+    404 on every row — a fallback that fails is not a fallback."""
+    from karani.config import reload_config
+    from karani.qualification.factory import get_qualifier
+    from karani.qualification.local import DEFAULT_MODEL
+    _local_cfg(tmp_path, monkeypatch)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    try:
+        client = get_qualifier(task="qualify")
+        assert "claude" not in client.model_name
+        assert client.model_name == DEFAULT_MODEL
+    finally:
+        reload_config()
+
+
+def test_fallback_drops_a_hosted_base_url(tmp_path, monkeypatch):
+    """Same trap one level down: a Groq/OpenAI base_url pointed at the
+    local client would send every request to the wrong host."""
+    from karani.config import reload_config
+    from karani.qualification.factory import get_qualifier
+    cfg = tmp_path / "karani.toml"
+    cfg.write_text('''version = 1
+[llm.qualify]
+provider = "openai"
+model = "gpt-5-mini"
+base_url = "https://api.groq.com/openai/v1"
+''')
+    reload_config(cfg)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    try:
+        client = get_qualifier(task="qualify")
+        assert "groq" not in client._base_url
+        assert "localhost" in client._base_url or "127.0.0.1" in client._base_url
+    finally:
+        reload_config()

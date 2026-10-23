@@ -38,6 +38,9 @@ class LocalQualifier(OpenAICompatQualifier):
     # One model, one GPU: Ollama serves these serially (and splitting the
     # context across parallel slots is worse — see docs/operations.md).
     max_parallel = 1
+    # ~75-170s per row on a laptop: more than this and an "hourly" pass
+    # stops fitting in an hour (docs/operations.md).
+    max_batch = 15
 
     def __init__(
         self,

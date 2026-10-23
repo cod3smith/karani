@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .client import QualifierClient
 
@@ -147,7 +147,7 @@ def get_qualifier(
     provider = (provider or os.getenv("QUAL_PROVIDER") or cfg.provider
                 or _BUILTIN_PROVIDER).lower()
 
-    provider = _affordable(provider)
+    requested, provider = provider, _affordable(provider)
     builder = _REGISTRY.get(provider)
     if builder is None:
         raise ValueError(
@@ -165,4 +165,10 @@ def get_qualifier(
         api_key_env=cfg.api_key_env,
         timeout=cfg.timeout,
     )
+    if provider != requested:
+        # The configured model, endpoint and key belong to the provider
+        # we just declined to use — carrying them into the local client
+        # would ask Ollama for "claude-haiku-5-5" on a Groq URL.
+        spec = replace(spec, model=None, base_url=None, api_key_env=None,
+                       effort=None)
     return builder(spec)

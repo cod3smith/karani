@@ -98,6 +98,18 @@ def resolve_concurrency(explicit: int | None, client: object) -> int:
     return max(1, int(getattr(client, "max_parallel", DEFAULT_CONCURRENCY)))
 
 
+def resolve_limit(limit: int, client: object) -> int:
+    """Clamp the batch to what this provider can finish inside the hour.
+
+    `qualify_limit` is tuned for a hosted model at seconds per row. The
+    budget guard can swap in the local model mid-month (ADR 0019), where
+    the same batch would run for hours and blow the hourly cadence — so
+    a provider may declare a ceiling of its own.
+    """
+    ceiling = getattr(client, "max_batch", None)
+    return min(limit, ceiling) if ceiling else limit
+
+
 async def qualify_pending(
     storage: Storage,
     client: QualifierClient,
@@ -124,7 +136,8 @@ async def qualify_pending(
             log.warning("qualify skipped: another qualify run holds the lock")
             return QualifyStats(lock_skipped=True)
 
-        rows = await storage.pending_qualification(limit=limit,
+        rows = await storage.pending_qualification(
+            limit=resolve_limit(limit, client),
                                                    resume_hash=resume.hash)
         stats = QualifyStats(fetched=len(rows))
         if not rows:

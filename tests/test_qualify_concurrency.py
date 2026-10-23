@@ -99,3 +99,17 @@ async def test_hosted_client_still_fans_out():
     await qualify_pending(storage, client,
                           ResumeProfile(raw_markdown="# K"), limit=6)
     assert client.peak > 1
+
+
+# --- batch size also follows the provider ---
+
+def test_batch_size_clamps_to_what_a_slow_provider_can_finish():
+    """qualify_limit is sized for a hosted model (seconds per row). If
+    the budget guard swaps in the local model mid-month, a 50-row batch
+    becomes a two-hour pass and the hourly cadence is gone."""
+    from karani.qualification.runner import resolve_limit
+    from karani.qualification.local import LocalQualifier
+
+    assert resolve_limit(50, LocalQualifier.__new__(LocalQualifier)) == 15
+    assert resolve_limit(10, LocalQualifier.__new__(LocalQualifier)) == 10
+    assert resolve_limit(50, object()) == 50       # hosted: no clamp

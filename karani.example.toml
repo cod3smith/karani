@@ -27,31 +27,41 @@ requires = ["visa_sponsorship"]
 
 # Per-task LLM routing. Tasks: qualify, draft, humanize, tailor, prep,
 # followup, agent — each falls back to [llm.default]. Providers:
-#   openrouter  hosted, many models (OPENROUTER_API_KEY in .env)
+#   anthropic   Claude, direct (ANTHROPIC_API_KEY)
+#   openrouter  hosted, many models (OPENROUTER_API_KEY)
 #   openai      api.openai.com (OPENAI_API_KEY) — or ANY OpenAI-compatible
 #               cloud via base_url + api_key_env, e.g. Groq/Together
-#   anthropic   direct Anthropic API (ANTHROPIC_API_KEY)
 #   local       Ollama / LM Studio / vLLM — no key, zero token cost
+# Spend is capped per month; past the cap karani swaps in the local
+# model rather than stopping or overspending (ADR 0019).
 [llm.default]
-provider = "openrouter"
-model = "moonshotai/kimi-k2-thinking"
+provider = "anthropic"
+model = "claude-opus-5-5"
 
-[llm.qualify]                  # bulk tier — run it free on a local model
+[llm.qualify]                  # bulk tier: cheapest model + cached prefix
+provider = "anthropic"
+model = "claude-haiku-5-5"
+effort = "low"
+
+[llm.draft]                    # low volume, high stakes
+provider = "anthropic"
+model = "claude-opus-5-5"
+
+[llm.humanize]                 # line-editing needs no hosted model
 provider = "local"
-model = "qwen3:4b"
-# base_url = "http://localhost:11434/v1"   # LM Studio: localhost:1234/v1
+model = "llama3.2:3b"
 
 # Any OpenAI-compatible cloud, no code changes — name the env var
 # holding the key; the key itself stays in .env:
-# [llm.draft]
+# [llm.tailor]
 # provider = "openai"
 # model = "llama-3.3-70b-versatile"
 # base_url = "https://api.groq.com/openai/v1"
 # api_key_env = "GROQ_API_KEY"
 
-[llm.humanize]                 # line-editing needs no big model
-provider = "local"
-model = "llama3.2:3b"
+[budget]
+monthly_usd = 15.0             # karani's slice of the account
+warn_at = 0.8                  # Slack notice at 80% of the cap
 
 [autopilot]
 min_fit = 85
