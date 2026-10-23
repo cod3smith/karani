@@ -6,7 +6,6 @@ import json
 import pytest
 
 from karani.qualification.client import _extract_json, qualify_one
-from karani.qualification.prompts import build_user_prompt
 
 
 class FakeClient:
@@ -88,10 +87,12 @@ async def test_qualify_one_malformed_downgrades_to_maybe():
     assert r.fit_score == 0
 
 
-def test_build_prompt_with_past_verdicts():
-    p = build_user_prompt(
-        resume="R", hints=[],
-        job_row={"title": "SWE", "description_text": "x"},
+def test_past_verdicts_ride_in_the_cached_system_prefix():
+    """Taste calibration is identical for every row in a pass, so it
+    belongs in the cacheable half, not the per-row prompt (ADR 0019)."""
+    from karani.qualification.prompts import system_prompt
+    p = system_prompt(
+        resume="R",
         past_verdicts=[
             {"company_display": "GitLab", "title": "SWE",
              "fit_score": 85, "verdict": "qualified", "user_verdict": "applied"},
@@ -104,9 +105,6 @@ def test_build_prompt_with_past_verdicts():
     assert "user chose: skip" in p
 
 
-def test_build_prompt_without_past_verdicts_omits_block():
-    p = build_user_prompt(
-        resume="R", hints=[],
-        job_row={"title": "SWE", "description_text": "x"},
-    )
-    assert "<past_verdicts>" not in p
+def test_system_prompt_without_past_verdicts_omits_block():
+    from karani.qualification.prompts import system_prompt
+    assert "<past_verdicts>" not in system_prompt(resume="R")

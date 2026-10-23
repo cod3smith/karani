@@ -87,10 +87,12 @@ class ScriptedLLM:
         self.script = script
         self.calls = 0
         self.last_prompt = ""
+        self.last_system = ""
 
     async def complete(self, system: str, user: str) -> str:
         self.calls += 1
         self.last_prompt = user
+        self.last_system = system
         return self.script
 
 
@@ -182,8 +184,12 @@ async def test_full_pipeline(patched_orchestrator, resume, tmp_path):
     requalifier = ScriptedLLM(QUAL_RESPONSE)
     rq = await qualify_pending(storage, requalifier, new_resume, limit=10)
     assert rq.fetched == 1  # resume changed -> re-qualify
-    assert "<past_verdicts>" in requalifier.last_prompt
-    assert "GitLab" in requalifier.last_prompt
+    # Stable half (resume + taste calibration) rides in the cached system
+    # prefix; the volatile half carries only this job (ADR 0019).
+    assert "<past_verdicts>" in requalifier.last_system
+    assert "GitLab" in requalifier.last_system
+    assert "Kelyn v2" in requalifier.last_system
+    assert "<past_verdicts>" not in requalifier.last_prompt
 
     # --- state machine: applied -> stage -> outcome ---
     await storage.set_application_status(job_id, "applied")

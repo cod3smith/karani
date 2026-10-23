@@ -114,7 +114,8 @@ excluded_domains = "crypto roles"
     assert "Lisbon, Portugal" in draft_sp()
 
 
-def test_llm_task_routing(tmp_path):
+def test_llm_task_routing(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")  # routing, not auth
     cfg_file = _write(tmp_path, """
 version = 1
 [llm.default]

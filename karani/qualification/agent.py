@@ -56,12 +56,12 @@ async def qualify_one_agent(
 ) -> QualificationResult:
     """Agent-mode qualification. Returns a QualificationResult with evidence trail."""
     registry = registry or default_registry()
-    user = build_user_prompt(
-        resume=resume, hints=hints, job_row=job_row,
-        past_verdicts=past_verdicts, memories=memories,
-    )
+    user = build_user_prompt(hints=hints, job_row=job_row,
+                             memories=memories)
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": agent_system_prompt()},
+        {"role": "system",
+         "content": agent_system_prompt(resume=resume,
+                                        past_verdicts=past_verdicts)},
         {"role": "user", "content": user},
     ]
     run = AgentRunLog()

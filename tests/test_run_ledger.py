@@ -170,6 +170,9 @@ async def test_hunt_pass_writes_a_ledger_row(monkeypatch, tmp_path):
 
     monkeypatch.setattr(ing, "run", fake_ingest)
     monkeypatch.setattr(qual, "qualify_pending", fake_qualify)
+    # The graph builds a real client through the factory; conftest strips
+    # billed-provider keys, so give it a dummy rather than a node error.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
 
     state = await graph_mod.run_hunt_once()
     assert state.get("run_recorded") is True
@@ -217,6 +220,9 @@ async def test_ledger_failure_never_sinks_a_pass(monkeypatch, tmp_path):
 
     monkeypatch.setattr(ing, "run", fake_ingest)
     monkeypatch.setattr(qual, "qualify_pending", fake_qualify)
+    # The graph builds a real client through the factory; conftest strips
+    # billed-provider keys, so give it a dummy rather than a node error.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
 
     state = await graph_mod.run_hunt_once()      # must not raise
     assert state["ingest"]["fetched"] == 1

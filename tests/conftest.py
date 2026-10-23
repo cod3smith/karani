@@ -27,6 +27,10 @@ _STRIPPED_VARS = (
     "NOTION_TOKEN", "NOTION_DATABASE_ID",
     "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL",
     "LOCAL_LLM_BASE_URL", "MEM0_LLM_MODEL",
+    # Billed providers: a test that builds a client with a real key in
+    # the environment spends the user's money. Same lesson as the 30
+    # fixture pages on the live Notion board, with an invoice attached.
+    "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY",
     "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "MINIO_ENDPOINT",
     # Knobs from the developer's .env that would shadow config-precedence
     # tests (env deliberately outranks karani.toml).

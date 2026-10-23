@@ -10,8 +10,11 @@ from __future__ import annotations
 #     sponsorship (EU/Japan preferred) are viable; comp-bio roles are out.
 # v4: persona/positioning rendered from karani.toml `[positioning]`
 #     (ADR 0015) — prompts are no longer hardcoded to one candidate.
-PROMPT_VERSION = "qual-v4"
-AGENT_PROMPT_VERSION = "qual-agent-v4"
+# v5: stable/volatile split for prompt caching (ADR 0019) — the resume
+#     and taste-calibration examples moved from the per-row user prompt
+#     into the system prefix, which is what makes them cacheable.
+PROMPT_VERSION = "qual-v5"
+AGENT_PROMPT_VERSION = "qual-agent-v5"
 
 
 def persona() -> str:
@@ -26,12 +29,27 @@ def persona() -> str:
     )
 
 
-def system_prompt() -> str:
-    return persona() + "\n\n" + _SYSTEM_RULES
+def _stable_context(resume: str, past_verdicts: list[dict] | None) -> str:
+    """Everything identical for every job in a pass. Ordered before the
+    volatile half so providers can put a cache breakpoint after it."""
+    parts = []
+    if resume:
+        parts.append(f"<resume>\n{resume}\n</resume>")
+    if past_verdicts:
+        parts.append(_render_past_verdicts(past_verdicts))
+    return ("\n\n" + "\n\n".join(parts)) if parts else ""
 
 
-def agent_system_prompt() -> str:
-    return persona() + "\n\n" + _AGENT_RULES
+def system_prompt(resume: str = "", 
+                  past_verdicts: list[dict] | None = None) -> str:
+    return (persona() + "\n\n" + _SYSTEM_RULES
+            + _stable_context(resume, past_verdicts))
+
+
+def agent_system_prompt(resume: str = "",
+                        past_verdicts: list[dict] | None = None) -> str:
+    return (persona() + "\n\n" + _AGENT_RULES
+            + _stable_context(resume, past_verdicts))
 
 
 _SYSTEM_RULES = """\
@@ -103,10 +121,6 @@ Final JSON schema:
 
 
 USER_PROMPT_TEMPLATE = """\
-<resume>
-{resume}
-</resume>
-
 <user_hints>
 {hints}
 </user_hints>
@@ -149,14 +163,13 @@ Return a single JSON object matching this schema and NOTHING else:
 
 def build_user_prompt(
     *,
-    resume: str,
+    resume: str = "",   # accepted and ignored: now in the system prefix
     hints: list[str],
     job_row: dict,
     past_verdicts: list[dict] | None = None,
     memories: list[str] | None = None,
 ) -> str:
     body = USER_PROMPT_TEMPLATE.format(
-        resume=resume,
         hints="\n".join(f"- {h}" for h in hints) if hints else "(none)",
         company=job_row.get("company_display") or job_row.get("company") or "",
         title=job_row.get("title", ""),
@@ -169,8 +182,6 @@ def build_user_prompt(
         prefilter_notes=job_row.get("prefilter_notes") or "",
         description=(job_row.get("description_text") or "")[:8000],
     )
-    if past_verdicts:
-        body = _render_past_verdicts(past_verdicts) + "\n\n" + body
     if memories:
         body = _render_memories(memories) + "\n\n" + body
     return body

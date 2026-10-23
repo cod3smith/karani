@@ -161,3 +161,11 @@ def test_agent_mode_inherited_by_all_compat_providers(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     for provider in ("openai", "local"):
         assert hasattr(get_qualifier(provider=provider), "chat_turn")
+
+
+def test_billed_provider_keys_are_stripped():
+    """A real key reachable from a test is a billable accident waiting to
+    happen — conftest must remove them before any module loads."""
+    import os
+    for var in ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
+        assert os.getenv(var) is None, f"{var} leaked into the test env"

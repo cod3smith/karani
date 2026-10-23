@@ -93,11 +93,13 @@ async def qualify_one(
     memories: list[str] | None = None,
     model_name: str | None = None,
 ) -> QualificationResult:
-    user = build_user_prompt(
-        resume=resume, hints=hints, job_row=job_row,
-        past_verdicts=past_verdicts, memories=memories,
-    )
-    raw = await client.complete(system_prompt(), user)
+    # Stable half (instructions + resume + taste calibration) goes in the
+    # system prompt so providers can cache it across the pass; only the
+    # job and its recalled memories vary per row (ADR 0019).
+    user = build_user_prompt(hints=hints, job_row=job_row,
+                             memories=memories)
+    raw = await client.complete(
+        system_prompt(resume=resume, past_verdicts=past_verdicts), user)
     try:
         data = _extract_json(raw)
         result = QualificationResult.model_validate(data)
