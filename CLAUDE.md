@@ -74,6 +74,8 @@ karani/                              (repo)
 │
 ├── karani/                          ← THE installable package
 │   ├── cli.py                       ← `karani <verb>` — ~30 verbs, single entry point
+│   ├── budget.py                    ← LLM price table, spend accounting, cap +
+│   │     local fallback (ADR 0019)
 │   ├── config/                      ← karani.toml schema + loader + `karani init` wizard (ADR 0015)
 │   ├── resources/                   ← compose file, launchd templates (incl. watchdog +
 │   │     ollama-env), watchdog.sh, example toml (in-wheel)
@@ -102,7 +104,8 @@ karani/                              (repo)
 ├── drafts/                          ← generated packs (gitignored)
 ├── tests/                           ← 245 deterministic + 12 Postgres-marked (`make test-pg`)
 └── docs/                            ← vision · architecture · roadmap · memory ·
-      conventions · operations · adrs/ (0001-0018)
+      conventions · operations · adrs/ (0001-0019) ·
+      superpowers/specs/ (design docs)
 ```
 
 ---
@@ -195,7 +198,22 @@ you'll silently degrade the pipeline in a way that's hard to spot.
   the version, and that's how we distinguish "old data" from "new data" for
   A/B and rollback.
 
-### 4.11 The memory ledger is the system of record
+### 4.11 Billed work degrades, it never halts or overspends
+- `karani/budget.py` prices every LLM response and caps monthly spend
+  (default $15 — karani shares the account with other projects). Past
+  the cap, or with no API key, the factory returns the local model and
+  records why; the hourly report announces the change once. Never make
+  a missing key or a spent budget a hard failure, and never alert on it
+  every pass.
+- The stable/volatile prompt split (qual-v5) exists for prompt caching:
+  instructions + resume + taste calibration go in the system prompt,
+  only the job varies per row. Putting per-row content above the
+  breakpoint silently kills the cache — and `tests/test_prompt_caching.py`
+  asserts the prefix is byte-identical across jobs.
+- Tests must never reach a billed endpoint. conftest strips
+  ANTHROPIC / OPENROUTER / OPENAI keys; pass dummies explicitly.
+
+### 4.12 The memory ledger is the system of record
 - The `memories` table in Postgres is ground truth; the mem0/pgvector
   index is derived and disposable. Never write memory only to mem0, and
   never let a mem0 failure abort a batch — degrade to `basic` recall.
