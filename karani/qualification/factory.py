@@ -109,7 +109,7 @@ def _task_cfg(task: str):
     return get_config().llm.for_task(task)
 
 
-def _affordable(provider: str) -> str:
+def _affordable(provider: str, api_key_env: str | None = None) -> str:
     """Swap a billed provider for the local model when we cannot or
     should not pay for it (ADR 0019).
 
@@ -125,7 +125,9 @@ def _affordable(provider: str) -> str:
     if provider == "local":
         return provider
 
-    key_var = budget.PROVIDER_KEYS.get(provider)
+    # A configured api_key_env wins: the "openai" provider pointed at
+    # Groq or Together authenticates with that cloud's key, not OPENAI's.
+    key_var = api_key_env or budget.PROVIDER_KEYS.get(provider)
     if key_var and not os.getenv(key_var):
         budget.note_degraded(
             f"{key_var} is not set — {provider} unavailable, using local")
@@ -147,7 +149,7 @@ def get_qualifier(
     provider = (provider or os.getenv("QUAL_PROVIDER") or cfg.provider
                 or _BUILTIN_PROVIDER).lower()
 
-    requested, provider = provider, _affordable(provider)
+    requested, provider = provider, _affordable(provider, cfg.api_key_env)
     builder = _REGISTRY.get(provider)
     if builder is None:
         raise ValueError(

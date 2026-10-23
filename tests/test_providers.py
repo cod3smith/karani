@@ -169,3 +169,22 @@ def test_billed_provider_keys_are_stripped():
     import os
     for var in ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
         assert os.getenv(var) is None, f"{var} leaked into the test env"
+
+
+def test_budget_gate_honors_a_custom_key_var(tmp_path, monkeypatch):
+    """Regression: the gate checked OPENAI_API_KEY even when the task
+    named GROQ_API_KEY, so every custom cloud fell back to local."""
+    from karani.config import reload_config
+    from karani.qualification.factory import get_qualifier
+    from karani.qualification.openai import OpenAIQualifier
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-abc")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    cfg = tmp_path / "karani.toml"
+    cfg.write_text('''version = 1
+[llm.qualify]
+provider = "openai"
+base_url = "https://api.groq.com/openai/v1"
+api_key_env = "GROQ_API_KEY"
+''')
+    reload_config(cfg)
+    assert isinstance(get_qualifier(task="qualify"), OpenAIQualifier)
