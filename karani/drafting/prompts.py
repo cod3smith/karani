@@ -4,7 +4,10 @@ from __future__ import annotations
 # v2: <keyword_targets> block — JD terms the resume misses, for honest
 # inclusion (ATS coverage; see keywords.py).
 # v3: persona rendered from karani.toml [positioning] (ADR 0015).
-DRAFT_PROMPT_VERSION = "draft-v3"
+# v4: work-authorization facts are injected, not invented. Earlier
+#     drafts improvised ("targeting SF-band remote roles without visa
+#     requirements") about a legal status the model cannot know.
+DRAFT_PROMPT_VERSION = "draft-v4"
 
 def system_prompt() -> str:
     from karani.config import get_config
@@ -47,6 +50,12 @@ Rules of tailoring:
   your current role?", "How do you handle ambiguity?"). If the JD listed
   specific screener questions, use those verbatim.
 - Each answer 80–250 words. First-person, concrete, cite resume material.
+- WORK AUTHORIZATION, visa status, sponsorship and right to work are
+  NEVER yours to state, imply or speculate about. They are supplied
+  below as resolved facts. Use that wording if the topic is relevant
+  and otherwise stay silent on it. Do not write phrases like "no visa
+  required" or "without sponsorship" on your own initiative — these are
+  legal attestations the candidate is accountable for.
 
 Rules of ATS coverage:
 - The <keyword_targets> block lists technical terms from the JD that the
@@ -100,14 +109,34 @@ Return this JSON and nothing else:
 """
 
 
-def build_user_prompt(
+def _render_work_auth(answers) -> str:
+    """Resolved legal facts, verbatim. See karani/legal.py — the model
+    may phrase around these but must never originate them."""
+    f = answers.form_answers()
+    lines = [
+        "<work_authorization_facts>",
+        "RESOLVED — use verbatim if relevant, never contradict or extend:",
+        f"- Work location / arrangement: {f['work_location']}",
+        f"- Requires visa sponsorship: {f['requires_sponsorship']}",
+        f"- Authorized to work in the role's country: {f['work_authorization']}",
+        f"- Earliest start: {f['earliest_start']}",
+    ]
+    if answers.needs_review:
+        lines.append("- NOTE: work location unclear; do not assert anything "
+                     "about authorization for this role.")
+    lines.append("</work_authorization_facts>")
+    return "\n".join(lines)
+
+
+def build_user_prompt(  # noqa: D417
     *, resume: str, qualification: str, job_row: dict,
     keyword_targets: list[str] | None = None,
+    work_auth=None,
 ) -> str:
     lo = job_row.get("comp_min_usd")
     hi = job_row.get("comp_max_usd")
     comp = f"${lo:,}–${hi:,}" if lo and hi else (f"${lo:,}+" if lo else "not disclosed")
-    return USER_PROMPT_TEMPLATE.format(
+    body = USER_PROMPT_TEMPLATE.format(
         resume=resume,
         qualification=qualification or "(no prior qualification)",
         company=job_row.get("company_display") or job_row.get("company") or "",
@@ -118,3 +147,6 @@ def build_user_prompt(
         keyword_targets="\n".join(f"- {t}" for t in keyword_targets)
         if keyword_targets else "(none — resume already covers the JD's terms)",
     )
+    if work_auth is not None:
+        body = f"{_render_work_auth(work_auth)}\n\n{body}"
+    return body

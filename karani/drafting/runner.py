@@ -42,9 +42,16 @@ async def draft_for_job(
     jd_keywords = extract_keywords(job_row.get("description_text") or "")
     resume_gap = coverage(jd_keywords, resume)
 
+    # Legal answers are resolved from declared facts, never left to the
+    # model (karani/legal.py).
+    from karani.config import get_config
+    from karani.legal import resolve_work_authorization
+    work_auth = resolve_work_authorization(job_row, get_config().legal)
+
     user = build_user_prompt(resume=resume, qualification=qual_text,
                              job_row=job_row,
-                             keyword_targets=resume_gap["missing"])
+                             keyword_targets=resume_gap["missing"],
+                             work_auth=work_auth)
     raw = await client.complete(system_prompt(), user)
 
     try:

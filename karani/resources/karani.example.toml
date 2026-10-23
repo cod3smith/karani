@@ -15,6 +15,19 @@ based_in = "City, Country"
 candidate = "a senior software engineer"
 narrative = "targeting fully-remote roles at globally-distributed companies paying at least $160,000 base, or roles that sponsor a visa and relocation (EU, Japan preferred)"
 
+# Your legal facts. Every work-authorization answer on an application
+# form is derived from these deterministically — a model never answers
+# "are you authorized to work in X", because that is an attestation you
+# are accountable for. Leave work_authorized_in empty and nothing will
+# ever claim authorization on your behalf.
+[legal]
+citizenships = ["Kenya"]
+based_in_country = "Kenya"
+work_authorized_in = ["Kenya"]          # no sponsorship needed here
+remote_engagement = ["employer_of_record", "contractor"]
+relocation_open_to = ["EU", "Japan"]
+notice_period_days = 30
+
 [[shape]]
 name = "global-remote"
 remote = "required"
