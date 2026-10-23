@@ -43,12 +43,32 @@ was sent, which artifact version, when. Responses detected and routed.
 Prep delivered before an interview, not requested after it. A measured
 feedback loop from outcome back to strategy.
 
-**Non-goals, deliberately.** karani never submits an application — the
-rule from ADR 0012 stands. No LinkedIn scraping: the data export is the
-supported path, and building bot-detection evasion is both against
-their terms and a liability. No auto-replying to recruiters; drafts
-only, for the same reason karani does not auto-submit. No ATS account
-automation — fragile, and the answer sheet captures most of the value.
+**Non-goals, deliberately.**
+
+*karani does not submit applications* (ADR 0012 stands). The
+reciprocity argument — "companies automate screening, so candidates
+should automate applying" — was raised and rejected on its merits, not
+on principle. Three reasons. Mass submission is what drives ATS
+screening to get stricter, and the candidate it hurts most is one
+targeting a small, specific list, where being flagged at a single
+company costs more than every hour saved. Auto-submit means a tailored
+resume and an Opus-drafted letter reach a real company unread, and the
+failure mode is not a typo but an overstated claim the candidate is
+accountable for — with 121 packs queued, the expected number of bad
+ones is not zero. And nothing here will evade bot detection or solve
+CAPTCHAs.
+
+What replaces it: **assisted submit** — karani fills every field from
+the answer sheet, attaches the documents, and stops with the form
+populated for a human scan and click. Seconds per application, and
+squarely mainstream (Simplify, Teal and friends do exactly this).
+Genuinely autonomous submission is reserved for two clean paths:
+**email applications** (draft, approve in Slack, send — no form, no
+bot detection) and any ATS with an official candidate-side API.
+
+*No LinkedIn scraping* — the data export is the supported path.
+*No auto-replying to recruiters*; drafts only, same reasoning.
+*No ATS account automation* — fragile and low-value next to the sheet.
 
 ## 4. On "recursive self-improving agents"
 
@@ -123,6 +143,25 @@ column, no tables or graphics, standard section headings, one page.
 Named `Kelyn_Njeri_Resume_<Company>_<Role>.pdf`, versioned into the
 existing MinIO per-job prefix (ADR 0014) with presigned links.
 
+### 5.2b Work authorization (built 2026-10-23)
+
+The question most likely to filter him out for the wrong reason, now
+resolved deterministically in `karani/legal.py` from a declared
+`[legal]` block rather than generated. Rationale and the honesty
+invariant are in the module docstring; the short version is that these
+are attestations, the same correct question has opposite answers by
+role shape, and a model has no authoritative facts to answer from.
+
+Resolved per job and carried into the pack, the answer sheet and the
+assisted-submit autofill:
+
+| Shape | Sponsorship | Authorized in role country | Viable |
+|---|---|---|---|
+| Global remote, EOR/contractor | No | n/a — no work location | yes |
+| Relocation offered (EU/Japan) | Yes | No | yes |
+| Region-locked, no sponsorship | Yes | No | no |
+| Unclear geography | flagged | never asserted | review |
+
 ### 5.3 Submission console
 
 One published HTML artifact, regenerated each pass, listing every
@@ -162,7 +201,7 @@ coach surface is a weekly read over that ledger.
 | Phase | Deliverable | Unblocks |
 |---|---|---|
 | 1 | Profile core + DOCX/PDF renderers | submission at all |
-| 2 | ATS question introspection + console + write-back | the one-hour session; first labels |
+| 2 | ATS question introspection + console + write-back + assisted autofill + email-apply path | the one-hour session; first labels |
 | 3 | Gmail watcher + state machine | outcomes without manual entry |
 | 4 | Prep on trigger | interviews |
 | 5 | Conversion ledger + variant promotion + coach | compounding |
