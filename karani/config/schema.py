@@ -127,6 +127,13 @@ class AutopilotCfg(BaseModel, frozen=True):
     verify: bool = False
 
 
+class BudgetCfg(BaseModel, frozen=True):
+    """karani's slice of the LLM account — not the whole balance. Past
+    this, billed providers are swapped for the local model (ADR 0019)."""
+    monthly_usd: float = 15.0
+    warn_at: float = 0.8          # fraction of the cap that warns
+
+
 class HuntCfg(BaseModel, frozen=True):
     qualify_limit: int = 50
     min_comp_usd: int | None = None
@@ -146,6 +153,7 @@ class KaraniConfig(BaseModel, frozen=True):
     artifacts: ArtifactsCfg = ArtifactsCfg()
     autopilot: AutopilotCfg = AutopilotCfg()
     hunt: HuntCfg = HuntCfg()
+    budget: BudgetCfg = BudgetCfg()
 
     @model_validator(mode="after")
     def _check_version(self) -> "KaraniConfig":

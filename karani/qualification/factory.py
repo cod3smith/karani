@@ -109,6 +109,36 @@ def _task_cfg(task: str):
     return get_config().llm.for_task(task)
 
 
+def _affordable(provider: str) -> str:
+    """Swap a billed provider for the local model when we cannot or
+    should not pay for it (ADR 0019).
+
+    Two cases, both of which used to be hard failures: no API key
+    configured (so config can name a hosted provider before the key
+    exists), and the monthly allocation spent. Either way the hunt keeps
+    running on the free local model and the reason reaches the hourly
+    report — degrading loudly beats both crashing and overspending.
+    """
+    import os
+
+    from karani import budget
+    if provider == "local":
+        return provider
+
+    key_var = budget.PROVIDER_KEYS.get(provider)
+    if key_var and not os.getenv(key_var):
+        budget.note_degraded(
+            f"{key_var} is not set — {provider} unavailable, using local")
+        return "local"
+    if not budget.allows_hosted():
+        budget.note_degraded(
+            f"monthly budget spent (${budget.spent():.2f} of "
+            f"${budget.cap():.2f}) — using local until the month rolls over")
+        return "local"
+    budget.note_degraded("")
+    return provider
+
+
 def get_qualifier(
     provider: str | None = None, model: str | None = None,
     *, task: str = "qualify",
@@ -117,6 +147,7 @@ def get_qualifier(
     provider = (provider or os.getenv("QUAL_PROVIDER") or cfg.provider
                 or _BUILTIN_PROVIDER).lower()
 
+    provider = _affordable(provider)
     builder = _REGISTRY.get(provider)
     if builder is None:
         raise ValueError(

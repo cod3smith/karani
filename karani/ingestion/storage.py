@@ -1292,6 +1292,23 @@ class Storage:
                 json.dumps(tokens, default=str), errors,
             )
 
+    async def spend_this_month(self) -> float:
+        """Dollars recorded by scheduler passes since the 1st. The cost
+        rides in the ledger's `tokens` blob, so no schema change — rows
+        written before cost tracking simply read as zero."""
+        from karani.budget import month_start
+        start = month_start()
+        if self.pool is None:
+            return sum(float((r.get("tokens") or {}).get("cost_usd") or 0.0)
+                       for r in self._runs
+                       if r.get("finished_at") and r["finished_at"] >= start)
+        async with self.pool.acquire() as conn:
+            return float(await conn.fetchval(
+                """
+                SELECT COALESCE(SUM((tokens->>'cost_usd')::numeric), 0)
+                FROM run_ledger WHERE finished_at >= $1
+                """, start) or 0.0)
+
     async def last_run_at(self, kind: str) -> datetime | None:
         """When a pass of `kind` last finished — None if never."""
         if self.pool is None:

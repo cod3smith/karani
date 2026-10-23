@@ -13,7 +13,8 @@ _lock = threading.Lock()
 _totals = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0,
            # Cache reads are billed input at ~0.1x, writes at 1.25x — the
            # cost model needs them separately from plain input tokens.
-           "cache_read_tokens": 0, "cache_write_tokens": 0}
+           "cache_read_tokens": 0, "cache_write_tokens": 0,
+           "cost_usd": 0.0}
 
 
 def record(usage: dict | None) -> None:
@@ -25,6 +26,8 @@ def record(usage: dict | None) -> None:
         _totals["completion_tokens"] += int(usage.get("completion_tokens") or 0)
         _totals["cache_read_tokens"] += int(usage.get("cache_read_tokens") or 0)
         _totals["cache_write_tokens"] += int(usage.get("cache_write_tokens") or 0)
+        from karani import budget
+        _totals["cost_usd"] += budget.cost_usd(usage)
         _totals["calls"] += 1
 
 

@@ -258,14 +258,24 @@ def build_hunt_graph(deps: HuntDeps):
                 else {"errors": [err]})
 
     async def report(state: HuntState) -> dict:
+        from karani import budget
         errors = state.get("errors", [])
+        notice = budget.pending_announcement()
         summary = (
             f"hunt pass: ingest={state.get('ingest')} "
             f"qualify={state.get('qualify')} "
             f"autopilot={state.get('autopilot')} "
             f"notion={state.get('notion')} errors={len(errors)}"
         )
+        if notice:
+            summary = f"{summary} | {notice}"
         log.info(summary)
+        if notice and not errors and deps.slack_factory and deps.channel:
+            try:
+                await deps.slack_factory().post_message(deps.channel, notice)
+                return {"alerted": True}
+            except Exception:
+                log.exception("budget notice to slack failed")
         if errors and deps.slack_factory and deps.channel:
             try:
                 await deps.slack_factory().post_message(
@@ -326,6 +336,11 @@ async def run_hunt_once() -> HuntState:
             memory=MemoryManager(storage),
         )
         from karani.qualification import usage
+
+        # Month-to-date spend, so the factory's budget gate decides on
+        # real numbers rather than this process's first call (ADR 0019).
+        from karani import budget
+        await budget.refresh(storage)
 
         started = datetime.now(timezone.utc)
         tokens_before = usage.snapshot()

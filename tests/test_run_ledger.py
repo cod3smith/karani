@@ -26,7 +26,9 @@ def test_usage_counters_accumulate_as_deltas():
     after = usage.snapshot()
     d = usage.delta(before, after)
     assert d == {"prompt_tokens": 110, "completion_tokens": 40, "calls": 3,
-                 "cache_read_tokens": 0, "cache_write_tokens": 0}
+                 "cache_read_tokens": 0, "cache_write_tokens": 0,
+                 # unpriced model in these payloads -> no spend recorded
+                 "cost_usd": 0.0}
 
 
 def test_openrouter_records_usage_on_response(monkeypatch):
