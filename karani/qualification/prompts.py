@@ -10,13 +10,15 @@ from __future__ import annotations
 #     sponsorship (EU/Japan preferred) are viable; comp-bio roles are out.
 # v4: persona/positioning rendered from karani.toml `[positioning]`
 #     (ADR 0015) — prompts are no longer hardcoded to one candidate.
+# v7: the merged profile core (resume + LinkedIn export + portfolio)
+#     joins the cached prefix — career-runner Phase 1.
 # v6: the career transcript (karani/experience.py) joins the cached
 #     stable prefix — the detail a resume compresses away.
 # v5: stable/volatile split for prompt caching (ADR 0019) — the resume
 #     and taste-calibration examples moved from the per-row user prompt
 #     into the system prefix, which is what makes them cacheable.
-PROMPT_VERSION = "qual-v6"
-AGENT_PROMPT_VERSION = "qual-agent-v6"
+PROMPT_VERSION = "qual-v7"
+AGENT_PROMPT_VERSION = "qual-agent-v7"
 
 
 def persona() -> str:
@@ -32,12 +34,14 @@ def persona() -> str:
 
 
 def _stable_context(resume: str, past_verdicts: list[dict] | None,
-                    experience: str = "") -> str:
+                    experience: str = "", profile: str = "") -> str:
     """Everything identical for every job in a pass. Ordered before the
     volatile half so providers can put a cache breakpoint after it."""
     parts = []
     if resume:
         parts.append(f"<resume>\n{resume}\n</resume>")
+    if profile:
+        parts.append(profile)
     if experience:
         # The candidate in their own words — detail the resume
         # compressed away (karani/experience.py).
@@ -54,16 +58,16 @@ def _stable_context(resume: str, past_verdicts: list[dict] | None,
 
 def system_prompt(resume: str = "",
                   past_verdicts: list[dict] | None = None,
-                  experience: str = "") -> str:
+                  experience: str = "", profile: str = "") -> str:
     return (persona() + "\n\n" + _SYSTEM_RULES
-            + _stable_context(resume, past_verdicts, experience))
+            + _stable_context(resume, past_verdicts, experience, profile))
 
 
 def agent_system_prompt(resume: str = "",
                         past_verdicts: list[dict] | None = None,
-                        experience: str = "") -> str:
+                        experience: str = "", profile: str = "") -> str:
     return (persona() + "\n\n" + _AGENT_RULES
-            + _stable_context(resume, past_verdicts, experience))
+            + _stable_context(resume, past_verdicts, experience, profile))
 
 
 _SYSTEM_RULES = """\

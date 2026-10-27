@@ -7,12 +7,13 @@ from __future__ import annotations
 # v4: work-authorization facts are injected, not invented. Earlier
 #     drafts improvised ("targeting SF-band remote roles without visa
 #     requirements") about a legal status the model cannot know.
+# v7: the merged profile core joins the drafter's material.
 # v6: the career transcript (karani/experience.py) — the detail a
 #     resume compresses away, which is what a specific letter is made of.
 # v5: the company dossier (karani/intel/) now reaches the drafter, plus
 #     the specificity rules that make use of it. Previously the letter
 #     was written from the job description alone.
-DRAFT_PROMPT_VERSION = "draft-v6"
+DRAFT_PROMPT_VERSION = "draft-v7"
 
 def system_prompt() -> str:
     from karani.config import get_config
@@ -158,6 +159,7 @@ def build_user_prompt(  # noqa: D417
     *, resume: str, qualification: str, job_row: dict,
     keyword_targets: list[str] | None = None,
     work_auth=None, dossier: str = "", experience: str = "",
+    profile: str = "",
 ) -> str:
     lo = job_row.get("comp_min_usd")
     hi = job_row.get("comp_max_usd")
@@ -175,6 +177,8 @@ def build_user_prompt(  # noqa: D417
         dossier_block=(f"<company_dossier>\n{dossier}\n</company_dossier>\n\n"
                        if dossier.strip() else ""),
     )
+    if profile:
+        body = f"{profile}\n\n{body}"
     if experience:
         body = (f"<career_transcript>\nThe candidate talking through their "
                 f"own career — spoken, so it rambles. This is the richest "

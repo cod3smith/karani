@@ -52,7 +52,7 @@ def test_rules_demand_company_specificity():
 
 
 def test_version_bumped_for_the_personalization_pass():
-    assert DRAFT_PROMPT_VERSION == "draft-v6"
+    assert DRAFT_PROMPT_VERSION == "draft-v7"
 
 
 # --- the career transcript ---

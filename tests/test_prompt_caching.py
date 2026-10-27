@@ -60,4 +60,4 @@ def test_prompt_version_tracks_material_changes():
     # Rule 4.10: persisted rows carry the version, so cohorts stay
     # distinguishable across the restructure (v5) and the career
     # transcript (v6).
-    assert PROMPT_VERSION == "qual-v6"
+    assert PROMPT_VERSION == "qual-v7"

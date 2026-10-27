@@ -28,6 +28,13 @@ remote_engagement = ["employer_of_record", "contractor"]
 relocation_open_to = ["EU", "Japan"]
 notice_period_days = 30
 
+[profile_sources]            # career-runner Phase 1: the profile core
+# LinkedIn's official data export ("Get a copy of your data") — a ZIP
+# or the unpacked folder. Never a scraper: that breaks their terms and
+# returns worse data than the export you can simply download.
+# linkedin_export = "data/linkedin-export.zip"
+# portfolio_url = "https://your-site.example"
+
 [[shape]]
 name = "global-remote"
 remote = "required"

@@ -64,6 +64,13 @@ class LegalCfg(BaseModel, frozen=True):
     notice_period_days: int = 0
 
 
+class ProfileSourcesCfg(BaseModel, frozen=True):
+    """Where the profile core reads from (career-runner Phase 1).
+    LinkedIn is the official data export, never a scraper."""
+    linkedin_export: str = ""      # ZIP or unpacked folder
+    portfolio_url: str = ""
+
+
 class TargetCfg(BaseModel, frozen=True):
     source: Literal["greenhouse", "lever", "ashby", "workable"]
     slug: str
@@ -171,6 +178,7 @@ class KaraniConfig(BaseModel, frozen=True):
     hunt: HuntCfg = HuntCfg()
     budget: BudgetCfg = BudgetCfg()
     legal: LegalCfg = LegalCfg()
+    profile_sources: ProfileSourcesCfg = ProfileSourcesCfg()
 
     @model_validator(mode="after")
     def _check_version(self) -> "KaraniConfig":
