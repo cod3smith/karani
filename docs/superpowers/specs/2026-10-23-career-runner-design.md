@@ -184,7 +184,34 @@ assisted-submit autofill:
 | Region-locked, no sponsorship | Yes | No | no |
 | Unclear geography | flagged | never asserted | review |
 
-### 5.3 Submission console
+### 5.3 Submission console — built 2026-10-27 (ADR 0022)
+
+`karani console` -> `data/submission_console.html`, plus the
+`submission_console` / `mark_submitted` MCP tools. Built as sketched,
+with three findings worth recording.
+
+**Greenhouse is the only one that really publishes a form.** Its
+per-job endpoint returns every question with label, type and allowed
+values. Lever exposes custom question cards and Ashby an application
+form definition *inside the payload karani already stores*, so when
+they are there they cost no fetch — and usually they are not. The
+fallback is per-ATS rather than generic, and is labelled on the card
+so a thin sheet is never mistaken for the real form.
+
+**The answer sheet had to grow a place for unplaced prose.** With a
+fallback question set, most of what the drafter wrote matches no
+field. Those answers now ride at the bottom of the sheet rather than
+being dropped, because they are the part of the pack that cost money.
+
+**A static file cannot write to Postgres.** "Mark submitted" keeps the
+ticks in localStorage and hands back one `karani submitted <ids>`
+command. That seam is the price of a page with no outbound request in
+it — ADR 0012 by construction, not by policy.
+
+Not built from this phase: assisted autofill (the browser side) and
+the email-apply path.
+
+### 5.3b Original sketch
 
 One published HTML artifact, regenerated each pass, listing every
 approved pack: apply link, document links, and a copy-button field
@@ -223,7 +250,7 @@ coach surface is a weekly read over that ledger.
 | Phase | Deliverable | Unblocks |
 |---|---|---|
 | 1 | **DONE 2026-10-27.** Profile core + DOCX/PDF renderers + career transcript | submission at all |
-| 2 | ATS question introspection + console + write-back + assisted autofill + email-apply path | the one-hour session; first labels |
+| 2 | **Introspection + console + write-back DONE 2026-10-27** (ADR 0022); assisted autofill + email-apply path outstanding | the one-hour session; first labels |
 | 3 | Gmail watcher + state machine | outcomes without manual entry |
 | 4 | Prep on trigger | interviews |
 | 5 | Conversion ledger + variant promotion + coach | compounding |

@@ -2,8 +2,8 @@
 # (see `karani --help`); these targets exist for muscle memory and CI.
 
 .PHONY: test test-pg lint build release ingest qualify digest daily hunt \
-        unschedule autopilot actions funnel mcp slack hourly infra-up \
-        infra-up-llm infra-down
+        unschedule autopilot actions funnel console mcp slack hourly \
+        infra-up infra-up-llm infra-down
 
 test:
 	uv run pytest tests -q
@@ -63,6 +63,11 @@ actions:
 
 funnel:
 	uv run karani funnel
+
+# The submission session: build the sheet, then record what you sent
+# with `karani submitted <ids>` (the console prints the exact command).
+console:
+	uv run karani console
 
 mcp:
 	uv run karani mcp

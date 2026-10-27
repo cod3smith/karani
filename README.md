@@ -107,6 +107,10 @@ karani digest --format html --output data/digest.html
 karani draft 12345            # cover letter + bullets + Q&A → drafts/*.md
 karani verdict 12345 apply    # taste signal for future qualify runs
 
+# --- send it (karani never does) ---
+karani console                # one HTML file: real ATS questions + answers
+karani submitted 12345        # record the send: status, time, artifacts
+
 # --- application state machine ---
 karani status 12345 applied
 karani stage 12345 recruiter_screen --notes "30-min chat"
@@ -282,6 +286,41 @@ Setup: a Slack app with Socket Mode on (`SLACK_APP_TOKEN`), bot scopes
 `message.im`, and the target conversation id in `SLACK_CHANNEL`. Pushes
 need only the bot token; the listener additionally needs
 `uv sync --extra slack`.
+
+## Submission console
+
+`karani console` renders every pack waiting to be sent into one
+self-contained HTML file (`data/submission_console.html`) — no server,
+works on a phone. Per job: the apply link, presigned links to the
+rendered `.docx`/PDF, and a field-by-field answer sheet with copy
+buttons.
+
+The sheet answers that job's *real* questions: Greenhouse, Lever and
+Ashby publish their application forms on the same public endpoints
+karani ingests from, so the wording and the option values are the
+company's own. An ATS that exposes nothing degrades to the standard
+field set, flagged as such on the card.
+
+Where each answer comes from is shown per field. Work authorization,
+sponsorship, relocation and start date are resolved from your
+`[legal]` block by `karani/legal.py` — never written by a model,
+because they are attestations you sign (ADR 0022). Demographic
+questions are left blank. Anything karani has no source for is flagged
+rather than invented.
+
+karani does not submit and never will (ADR 0012). You send each
+application, tick it in the console, then run the one command it
+prints:
+
+```bash
+karani console                          # build it
+open data/submission_console.html
+karani submitted 12345 12388 --cold     # record what you actually sent
+```
+
+That write-back — status, timestamp, and a snapshot of the artifact
+version that went out — is what arms follow-ups and gives the funnel
+its labels.
 
 ## Conversion intelligence
 

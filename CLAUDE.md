@@ -51,6 +51,14 @@ background). It:
     coverage per draft, cached company dossiers (`karani/intel/`), warm-path
     candidates, interview prep packs, and dossier-hooked follow-ups —
     all measured through `funnel_stats` (roadmap Tier 1.5).
+14. **Submits nothing, prepares everything** (`karani/submission/`,
+    `karani console`): reads each job's REAL application questions
+    from the Greenhouse/Lever/Ashby public APIs, answers them
+    deterministically (work authorization from `karani/legal.py`,
+    never a model), and renders one self-contained HTML console with
+    the apply link, presigned documents and copy buttons. You send it;
+    `karani submitted <ids>` records status, timestamp and the artifact
+    version that went out. See `docs/adrs/0022-submission-console-and-write-back.md`.
 
 **Positioning:** two role shapes qualify — (1) *companies that hire
 globally at SF pay bands regardless of candidate location*, and
@@ -99,6 +107,9 @@ karani/                              (repo)
 │   ├── autopilot/                   ← continuous hunt: pack + review card (ADR 0012)
 │   ├── orchestration/               ← LangGraph hourly pass (ADR 0013)
 │   ├── artifacts/                   ← MinIO/S3 per-job objects + presigned links (ADR 0014)
+│   ├── submission/                  ← the last mile (ADR 0022): questions.py (ATS
+│   │     form introspection) · answers.py (deterministic answer sheet) ·
+│   │     console.py (one static HTML file) · pack.py · runner.py
 │   └── mcp_server/                  ← MCP interface, 25 tools, thin adapter (ADR 0008)
 │
 ├── docker-compose.yml               ← dev infra (pgvector db :5433, minio :9010, ollama)
@@ -221,7 +232,20 @@ you'll silently degrade the pipeline in a way that's hard to spot.
 - Tests must never reach a billed endpoint. conftest strips
   ANTHROPIC / OPENROUTER / OPENAI keys; pass dummies explicitly.
 
-### 4.12 The memory ledger is the system of record
+### 4.12 Attestations are derived, never generated
+- Work authorization, visa sponsorship, relocation and start date are
+  answers the candidate signs. They come from `resolve_work_authorization`
+  in `karani/legal.py` (declared `[legal]` facts + the job's shape) on
+  every surface — pack, answer sheet, console. A drafting model may
+  *receive* the resolved line; it must never produce one. The same
+  question has opposite correct answers by role shape, so "the LLM
+  usually gets it right" is not a defence: a wrong one is a
+  misrepresentation on a submitted application.
+- Unknown geography resolves to "needs review", never an assumed yes.
+  `tests/test_work_authorization.py` and
+  `tests/test_submission_answers.py` pin both.
+
+### 4.13 The memory ledger is the system of record
 - The `memories` table in Postgres is ground truth; the mem0/pgvector
   index is derived and disposable. Never write memory only to mem0, and
   never let a mem0 failure abort a batch — degrade to `basic` recall.
@@ -357,6 +381,18 @@ that supersedes it. Never delete.
    (`AGENT_SYSTEM_PROMPT`) and bump `AGENT_PROMPT_VERSION`.
 4. Write a smoke test that scripts a `chat_turn` returning a `tool_calls`
    block invoking your tool.
+
+### Clear the submission queue (ADR 0022)
+1. `karani console` — builds `data/submission_console.html` from every
+   pack in `drafting`/`ready`. Free: no LLM call. One GET per
+   Greenhouse job the first time, cached in `jobs.ats_questions` after.
+2. Open it (it works on a phone), send each application yourself, tick
+   "mark submitted" as you go.
+3. Run the `karani submitted 12 34 ...` line the console prints. That
+   writes status + timestamp + the artifact snapshot, syncs Notion, and
+   arms the follow-up logic.
+4. `KARANI_ATS_QUESTIONS=off` disables all introspection (the console
+   then uses the standard field set and touches no network).
 
 ### Add a new MCP tool
 1. Put any new query/mutation on `Storage` (or a runner) first — the MCP
