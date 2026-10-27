@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 from karani.submission.answers import Answer, AnswerSheet
 from karani.submission.console import render_console
 
@@ -100,3 +102,33 @@ def test_an_empty_queue_renders_an_honest_page():
     html = render_console([])
     assert "<!doctype html>" in html
     assert re.search(r"nothing|empty|no packs", html, re.I)
+
+
+@pytest.mark.asyncio
+async def test_documents_tolerate_artifacts_as_a_json_string():
+    """Production shape: asyncpg returns JSONB as str (karani registers
+    no codec), and dict() on a string iterates its characters. The
+    console crashed on its first real run with
+    "dictionary update sequence element #0 has length 1"."""
+    import json
+
+    from karani.submission.runner import _documents
+
+    class StubStore:
+        async def presign(self, key):
+            return f"https://minio.local/{key}?sig=x"
+
+    payload = json.dumps({
+        "Kelyn_Resume.pdf": {"key": "1-x/Kelyn_Resume.pdf", "url": "stale"},
+        "cover_letter_pack.md": {"key": "1-x/cover_letter_pack.md"},
+    })
+    out = await _documents(StubStore(), payload)
+    assert "Kelyn_Resume.pdf" in out
+    assert out["Kelyn_Resume.pdf"].startswith("https://minio.local/")
+
+
+@pytest.mark.asyncio
+async def test_documents_survive_malformed_artifacts():
+    from karani.submission.runner import _documents
+    for bad in (None, "", "not json", "[1,2]", 5):
+        assert await _documents(object(), bad) == {}

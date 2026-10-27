@@ -49,9 +49,24 @@ async def _documents(store, artifacts) -> dict[str, str]:
     """
     if store is None or not artifacts:
         return {}
+    # JSONB arrives as str from asyncpg (no codec is registered) and as
+    # dict from the in-memory store; dict() on a string iterates its
+    # characters, which is how the first real console run died.
+    if isinstance(artifacts, str):
+        import json
+        try:
+            artifacts = json.loads(artifacts)
+        except json.JSONDecodeError:
+            return {}
+    if not isinstance(artifacts, dict):
+        return {}
     out: dict[str, str] = {}
-    for name, key in dict(artifacts).items():
+    for name, entry in artifacts.items():
         if any(skip in name for skip in _NOT_A_DOCUMENT):
+            continue
+        # Entries are {"key", "url"}; the stored url is already stale.
+        key = entry.get("key") if isinstance(entry, dict) else entry
+        if not key:
             continue
         try:
             out[name] = await store.presign(key)
