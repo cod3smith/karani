@@ -309,13 +309,15 @@ async def draft(
     from karani.drafting import build_application_pack
 
     resume = _load_resume(resume_path)
-    client = _make_qualifier(provider, model)
+    # None lets each pack stage route through [llm.<task>] (ADR 0017);
+    # an explicit provider/model is an override and pins all of them.
+    override = _make_qualifier(provider, model) if (provider or model) else None
     storage = await _get_storage()
     row = await storage.get_job(job_id)
     if row is None:
         raise ToolError(f"no job with id={job_id}")
     pack = await build_application_pack(
-        None, storage, job_row=row,
+        override, storage, job_row=row,
         resume_markdown=resume.raw_markdown,
         output_path=output_path,
     )
