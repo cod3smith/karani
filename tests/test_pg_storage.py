@@ -259,3 +259,42 @@ async def test_advisory_lock_released_after_exception(pg):
             raise RuntimeError("boom")
     async with pg.run_lock("autopilot") as got:
         assert got is True
+
+
+# --- the submission layer's SQL ---
+
+@pytest.mark.asyncio
+async def test_submission_queue_and_mark_submitted_sql(pg):
+    waiting = await _seed(pg, "1")
+    await pg.set_application_status(waiting, "ready")
+    await pg.set_artifacts(waiting, {"resume.pdf": "00001-gitlab/resume.pdf"})
+    sent = await _seed(pg, "2")
+    await pg.set_application_status(sent, "applied")
+    closed = await _seed(pg, "3")
+    await pg.set_application_status(closed, "ready")
+    await pg.set_outcome(closed, "rejection")
+
+    queue = await pg.submission_queue()
+    assert [r["id"] for r in queue] == [waiting]
+
+    assert await pg.mark_submitted(waiting, via="console",
+                                   notes="portal") is True
+    assert await pg.mark_submitted(10**9) is False
+
+    row = await pg.get_job(waiting)
+    assert row["application_status"] == "applied"
+    assert row["applied_at"] is not None
+    assert row["submitted_via"] == "console"
+    assert json.loads(row["submitted_artifacts"]) == {
+        "resume.pdf": "00001-gitlab/resume.pdf"}
+    assert json.loads(row["stages"])[-1]["stage"] == "submitted"
+    assert await pg.submission_queue() == []
+
+
+@pytest.mark.asyncio
+async def test_ats_questions_roundtrip_sql(pg):
+    job_id = await _seed(pg, "1")
+    await pg.set_ats_questions(job_id, {"ats": "greenhouse",
+                                        "questions": [{"key": "q1"}]})
+    row = await pg.get_job(job_id)
+    assert json.loads(row["ats_questions"])["questions"][0]["key"] == "q1"
