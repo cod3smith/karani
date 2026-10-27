@@ -72,7 +72,7 @@ async def build_application_pack(
     pkg, path = await draft_for_job(
         for_task("draft"), resume=resume_markdown, job_row=job_row,
         qualification=job_row.get("qualification"),
-        output_path=output_path,
+        output_path=output_path, storage=storage,
     )
     pack = ApplicationPack(pkg=pkg, draft_path=path)
     if pack.failed:

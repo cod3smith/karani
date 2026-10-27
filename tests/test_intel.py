@@ -11,6 +11,14 @@ from karani.ingestion.storage import Storage
 NOW = datetime(2026, 8, 27, 12, 0, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _intel_on(monkeypatch):
+    """conftest disables dossier probes suite-wide so nothing touches
+    the network by accident; this module stubs them explicitly and is
+    the one place that should exercise the real code path."""
+    monkeypatch.setenv("KARANI_INTEL", "on")
+
+
 @pytest.fixture
 def fake_probes(monkeypatch):
     calls = {"n": 0}

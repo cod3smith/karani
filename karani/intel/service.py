@@ -16,6 +16,8 @@ scraping — too fragile to ship silently (roadmap 1.5.3 note).
 """
 from __future__ import annotations
 
+import os
+
 import asyncio
 import logging
 import re
@@ -121,6 +123,13 @@ async def _build_payload(company: str) -> dict:
     }
 
 
+def intel_enabled() -> bool:
+    """KARANI_INTEL=off disables dossier probes. Tests set this (the
+    suite must never touch the network — see CLAUDE.md section 6), and
+    it is the kill switch when GitHub or Wikipedia are rate-limiting."""
+    return os.getenv("KARANI_INTEL", "on").lower() not in ("off", "0", "false")
+
+
 async def get_company_intel(
     storage: Storage, company: str, *,
     ttl_days: int = DEFAULT_TTL_DAYS,
@@ -129,6 +138,9 @@ async def get_company_intel(
 ) -> dict:
     """Cached dossier for `company`; probes and refreshes when stale."""
     now = now or datetime.now(timezone.utc)
+    if not intel_enabled():
+        return {"company_display": company, "payload": {}, "fetched_at": now,
+                "cached": False, "disabled": True}
     if not force_refresh:
         cached = await storage.get_company_intel(company)
         if cached:

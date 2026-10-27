@@ -46,6 +46,74 @@ MIN_CACHEABLE_TOKENS = 512
 _CHARS_PER_TOKEN = 3.7      # rough; only gates the cache marker
 
 
+def _to_anthropic_tools(tools: list[dict]) -> list[dict]:
+    """OpenAI function schemas -> Messages API tool definitions.
+
+    karani's registry speaks the OpenAI shape because that is the
+    lingua franca across its providers (ADR 0017); the adapter is this
+    provider's job, not the agent loop's. Already-Anthropic tools pass
+    through untouched.
+    """
+    out = []
+    for t in tools or []:
+        if "input_schema" in t:
+            out.append(t)
+            continue
+        fn = t.get("function") or {}
+        out.append({
+            "name": fn.get("name") or t.get("name", ""),
+            "description": fn.get("description") or t.get("description", ""),
+            "input_schema": fn.get("parameters") or t.get("parameters")
+                            or {"type": "object", "properties": {}},
+        })
+    return out
+
+
+def _to_anthropic_messages(messages: list[dict]) -> list[dict]:
+    """OpenAI transcript -> Messages API blocks.
+
+    Assistant turns carrying `tool_calls` become text + tool_use blocks;
+    `role: "tool"` results become a user turn holding tool_result. Both
+    are rejected outright in their OpenAI form.
+    """
+    out: list[dict] = []
+    for m in messages:
+        role, content = m.get("role"), m.get("content")
+
+        if role == "tool":
+            block = {"type": "tool_result",
+                     "tool_use_id": m.get("tool_call_id", ""),
+                     "content": content or ""}
+            # Consecutive results belong in one user turn.
+            if out and out[-1]["role"] == "user" and isinstance(
+                    out[-1]["content"], list):
+                out[-1]["content"].append(block)
+            else:
+                out.append({"role": "user", "content": [block]})
+            continue
+
+        if role == "assistant" and m.get("tool_calls"):
+            blocks: list[dict] = []
+            if content:
+                blocks.append({"type": "text", "text": content})
+            for tc in m["tool_calls"]:
+                fn = tc.get("function") or {}
+                raw = fn.get("arguments", tc.get("arguments", "")) or "{}"
+                try:
+                    args = json.loads(raw) if isinstance(raw, str) else raw
+                except json.JSONDecodeError:
+                    args = {}
+                blocks.append({"type": "tool_use",
+                               "id": tc.get("id", ""),
+                               "name": fn.get("name") or tc.get("name", ""),
+                               "input": args})
+            out.append({"role": "assistant", "content": blocks})
+            continue
+
+        out.append({"role": role, "content": content or ""})
+    return out
+
+
 class AnthropicQualifier:
     """Async Anthropic client with retry. Import guarded so it's optional."""
 
@@ -156,9 +224,10 @@ class AnthropicQualifier:
             else:
                 convo.append(m)
 
-        kwargs = dict(self._common(system), messages=convo)
+        kwargs = dict(self._common(system),
+                      messages=_to_anthropic_messages(convo))
         if tools:
-            kwargs["tools"] = tools
+            kwargs["tools"] = _to_anthropic_tools(tools)
         resp = await self._send(**kwargs)
         usage_dict = self._record(resp)
 

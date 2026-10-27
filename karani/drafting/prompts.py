@@ -7,7 +7,10 @@ from __future__ import annotations
 # v4: work-authorization facts are injected, not invented. Earlier
 #     drafts improvised ("targeting SF-band remote roles without visa
 #     requirements") about a legal status the model cannot know.
-DRAFT_PROMPT_VERSION = "draft-v4"
+# v5: the company dossier (karani/intel/) now reaches the drafter, plus
+#     the specificity rules that make use of it. Previously the letter
+#     was written from the job description alone.
+DRAFT_PROMPT_VERSION = "draft-v5"
 
 def system_prompt() -> str:
     from karani.config import get_config
@@ -39,6 +42,27 @@ Rules of voice:
   for..."). Middle paragraph(s): 2–3 concrete evidence points. Close by
   naming the specific next step you're proposing (e.g. "happy to walk
   through the NeoRx pipeline in a 30-min call").
+
+Rules of specificity — this is what separates a letter that gets read
+from one that gets skimmed:
+- The <company_dossier> block carries what is publicly known about this
+  company: what they build, their public engineering presence, people
+  worth knowing. Ground the opening in ONE concrete, checkable thing
+  from it — a product, a repository, an architectural choice — and
+  connect it to something the candidate has actually built. Name the
+  mechanism, not the vibe: "your control plane has to reconcile state
+  across regions; I built exactly that at X" beats "I admire your
+  engineering culture".
+- If the dossier is empty or says nothing useful, fall back to a
+  specific detail from the job description itself. NEVER invent a fact
+  about the company, a product they do not have, or a blog post you
+  have not been shown. A fabricated detail is worse than a generic
+  letter — it is checkable and it will be checked.
+- Apply the swap test before you finish: if this letter could be sent
+  to another company by replacing the company name and nothing else
+  would look wrong, the hook has failed. Rewrite it.
+- One claim, one piece of evidence. Three specific paragraphs beat six
+  general ones.
 
 Rules of tailoring:
 - `tailored_bullets`: pick 5–8 resume bullets that best match the JD.
@@ -76,7 +100,7 @@ USER_PROMPT_TEMPLATE = """\
 {qualification}
 </qualification_analysis>
 
-<job>
+{dossier_block}<job>
 <company>{company}</company>
 <title>{title}</title>
 <location>{location}</location>
@@ -131,7 +155,7 @@ def _render_work_auth(answers) -> str:
 def build_user_prompt(  # noqa: D417
     *, resume: str, qualification: str, job_row: dict,
     keyword_targets: list[str] | None = None,
-    work_auth=None,
+    work_auth=None, dossier: str = "",
 ) -> str:
     lo = job_row.get("comp_min_usd")
     hi = job_row.get("comp_max_usd")
@@ -146,6 +170,8 @@ def build_user_prompt(  # noqa: D417
         description=(job_row.get("description_text") or "")[:10000],
         keyword_targets="\n".join(f"- {t}" for t in keyword_targets)
         if keyword_targets else "(none — resume already covers the JD's terms)",
+        dossier_block=(f"<company_dossier>\n{dossier}\n</company_dossier>\n\n"
+                       if dossier.strip() else ""),
     )
     if work_auth is not None:
         body = f"{_render_work_auth(work_auth)}\n\n{body}"

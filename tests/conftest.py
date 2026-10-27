@@ -42,6 +42,9 @@ _STRIPPED_VARS = (
 for _var in _STRIPPED_VARS:
     os.environ.pop(_var, None)
 os.environ["KARANI_MEMORY"] = "basic"
+# Company dossiers probe GitHub/Wikipedia. Drafting now fetches one, so
+# without this the suite does real network I/O (it jumped 25s -> 80s).
+os.environ["KARANI_INTEL"] = "off"
 # mem0 defaults point at localhost infra that may genuinely be running on
 # a dev machine — force unreachable endpoints so mem0-mode tests exercise
 # the degradation path instead of touching a real vector store.

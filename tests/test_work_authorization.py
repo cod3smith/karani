@@ -137,9 +137,11 @@ def test_resolved_facts_reach_the_draft_prompt():
     assert "no visa" in user.lower() or "sponsorship" in user.lower()
 
 
-def test_draft_prompt_version_bumped():
+def test_draft_prompt_version_advanced_past_the_legal_change():
+    """Pinned loosely on purpose — the exact current version is asserted
+    once, in test_draft_personalization."""
     from karani.drafting.prompts import DRAFT_PROMPT_VERSION
-    assert DRAFT_PROMPT_VERSION == "draft-v4"
+    assert DRAFT_PROMPT_VERSION not in ("draft-v3",)
 
 
 # --- region-locked roles, caught by smoke not by unit tests ---

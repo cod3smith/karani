@@ -165,3 +165,51 @@ async def test_chat_turn_normalizes_tool_calls(monkeypatch):
         {"id": "tu_1", "name": "fetch_page",
          "arguments": '{"url": "https://example.com"}'},
     ]
+
+
+# --- agent mode against the REAL tool registry ---
+
+@pytest.mark.asyncio
+async def test_real_registry_tools_are_translated(provider):
+    """The bug this file missed: my first chat_turn test hand-wrote an
+    Anthropic-shaped tool, while karani's registry emits OpenAI shape
+    ({"type": "function", ...}). Production got
+    400 invalid_request_error on every verify. Always test with what
+    the codebase actually produces."""
+    from karani.qualification.tools import default_registry
+
+    await provider.chat_turn([{"role": "user", "content": "hi"}],
+                             tools=default_registry().schemas())
+    sent = provider._client.messages.calls[0]["tools"]
+    assert sent, "tools dropped"
+    for tool in sent:
+        assert "function" not in tool, "OpenAI envelope leaked to Anthropic"
+        assert set(tool) >= {"name", "description", "input_schema"}
+        assert tool["input_schema"]["type"] == "object"
+
+
+@pytest.mark.asyncio
+async def test_openai_style_transcript_is_translated(provider):
+    """The agent echoes assistant tool_calls and role='tool' results in
+    OpenAI form; the Messages API takes tool_use / tool_result blocks."""
+    await provider.chat_turn([
+        {"role": "user", "content": "check gitlab"},
+        {"role": "assistant", "content": "looking",
+         "tool_calls": [{"id": "call_1", "type": "function",
+                         "function": {"name": "fetch_page",
+                                      "arguments": '{"url": "https://x"}'}}]},
+        {"role": "tool", "tool_call_id": "call_1", "content": "200 OK"},
+    ])
+    msgs = provider._client.messages.calls[0]["messages"]
+    assistant = [m for m in msgs if m["role"] == "assistant"][0]
+    blocks = {b["type"] for b in assistant["content"]}
+    assert "tool_use" in blocks
+    use = [b for b in assistant["content"] if b["type"] == "tool_use"][0]
+    assert use["id"] == "call_1" and use["input"] == {"url": "https://x"}
+    # The result comes back as a user turn carrying a tool_result block.
+    result_blocks = [b for m in msgs if m["role"] == "user"
+                     for b in (m["content"] if isinstance(m["content"], list) else [])
+                     if b.get("type") == "tool_result"]
+    assert result_blocks and result_blocks[0]["tool_use_id"] == "call_1"
+    assert "no tool_calls key" not in str(msgs)
+    assert all("tool_calls" not in m for m in msgs)

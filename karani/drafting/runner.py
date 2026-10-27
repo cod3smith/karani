@@ -25,6 +25,7 @@ async def draft_for_job(
     job_row: dict,
     qualification: QualificationResult | dict | None = None,
     output_path: str | Path | None = None,
+    storage=None,
 ) -> tuple[DraftPackage, Path]:
     """Generate + persist a draft package for a single job."""
     qual_text = ""
@@ -48,10 +49,24 @@ async def draft_for_job(
     from karani.legal import resolve_work_authorization
     work_auth = resolve_work_authorization(job_row, get_config().legal)
 
+    # Company dossier (cached 14d) — the material that lets the letter
+    # say something true and specific about THIS company rather than
+    # praising its "culture". Best-effort: an unknown company just
+    # yields an empty block (draft-v5 tells the model not to invent).
+    dossier = ""
+    company = job_row.get("company_display") or job_row.get("company") or ""
+    if storage is not None and company:
+        try:
+            from karani.intel.service import dossier_text, get_company_intel
+            dossier = dossier_text(await get_company_intel(storage, company))
+        except Exception:
+            log.warning("company intel unavailable for %s; drafting without "
+                        "a dossier", company, exc_info=True)
+
     user = build_user_prompt(resume=resume, qualification=qual_text,
                              job_row=job_row,
                              keyword_targets=resume_gap["missing"],
-                             work_auth=work_auth)
+                             work_auth=work_auth, dossier=dossier)
     raw = await client.complete(system_prompt(), user)
 
     try:
