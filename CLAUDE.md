@@ -49,8 +49,15 @@ background). It:
     — see `docs/adrs/0012-autopilot-draft-human-send.md`.
 13. **Converts**: fast-lane flags on fresh high-fit roles, ATS keyword
     coverage per draft, cached company dossiers (`karani/intel/`), warm-path
-    candidates, interview prep packs, and dossier-hooked follow-ups —
-    all measured through `funnel_stats` (roadmap Tier 1.5).
+    candidates, and dossier-hooked follow-ups — all measured through
+    `funnel_stats` (roadmap Tier 1.5).
+14. **Coaches** (`karani/coach/`): when an application moves to `screen`
+    or `interview`, builds a prep pack unattended — refreshed dossier,
+    likely questions from the gap analysis, STAR stories mined from the
+    profile core and the career transcript with verified provenance,
+    derived comp research, questions to ask — renders it as .docx/PDF
+    into the job's MinIO prefix and pushes a Slack card ahead of the
+    date. See `docs/adrs/0022-prep-on-the-state-change.md`.
 
 **Positioning:** two role shapes qualify — (1) *companies that hire
 globally at SF pay bands regardless of candidate location*, and
@@ -90,8 +97,12 @@ karani/                              (repo)
 │   │     factory (registry + per-task routing) · tools + agent loop · runner
 │   ├── drafting/                    ← pack factory: pipeline.py (draft→humanize→
 │   │     tailor→store, ALL surfaces) · keywords · humanize · resume_tailor ·
-│   │     prep · followup · writers
-│   ├── intel/                       ← cached company dossiers + warm paths (TTL 14d)
+│   │     resume_plan (provenance) · followup · writers
+│   ├── coach/                       ← prep on a state change (ADR 0022):
+│   │     trigger · pipeline · stories (mined + verified) · comp (derived) ·
+│   │     prompts (versioned) · pack · blocks
+│   ├── intel/                       ← cached company dossiers + warm paths
+│   │     (TTL 14d; 3d for prep)
 │   ├── memory/                      ← ledger-first memory, mem0 optional (docs/memory.md)
 │   ├── slackbridge/                 ← two-way Slack: client/blocks/commands/
 │   │     interactions (pack buttons)/listener (ADR 0010)
@@ -104,9 +115,9 @@ karani/                              (repo)
 ├── docker-compose.yml               ← dev infra (pgvector db :5433, minio :9010, ollama)
 ├── data/                            ← resume.md (yours, gitignored) + .example
 ├── drafts/                          ← generated packs (gitignored)
-├── tests/                           ← 245 deterministic + 12 Postgres-marked (`make test-pg`)
+├── tests/                           ← 381 deterministic + 12 Postgres-marked (`make test-pg`)
 └── docs/                            ← vision · architecture · roadmap · memory ·
-      conventions · operations · adrs/ (0001-0021) ·
+      conventions · operations · adrs/ (0001-0022) ·
       superpowers/specs/ (design docs)
 ```
 
@@ -201,8 +212,9 @@ you'll silently degrade the pipeline in a way that's hard to spot.
 
 ### 4.10 Prompts are versioned
 - `qualification/prompts.py` has `PROMPT_VERSION`, `AGENT_PROMPT_VERSION`.
-  `drafting/prompts.py` has `DRAFT_PROMPT_VERSION`. Bump them when you
-  materially change a prompt — persisted `QualificationResult` rows carry
+  `drafting/prompts.py` has `DRAFT_PROMPT_VERSION`. `coach/prompts.py`
+  has `PREP_PROMPT_VERSION` and `STORY_PROMPT_VERSION`. Bump them when
+  you materially change a prompt — persisted `QualificationResult` rows carry
   the version, and that's how we distinguish "old data" from "new data" for
   A/B and rollback.
 
@@ -221,7 +233,30 @@ you'll silently degrade the pipeline in a way that's hard to spot.
 - Tests must never reach a billed endpoint. conftest strips
   ANTHROPIC / OPENROUTER / OPENAI keys; pass dummies explicitly.
 
-### 4.12 The memory ledger is the system of record
+### 4.12 Claims about the candidate trace to real material
+- The tailorer (`drafting/resume_plan.py`) and the coach
+  (`coach/stories.py`) both take *records with citations* back from the
+  model, never prose, and verify the citation before anything ships: an
+  unknown `source_id` is dropped, a `transcript_quote` that is not a
+  verbatim span of `data/experience.md` is dropped, a rewrite that loses
+  a figure the source had falls back to the original. A record left with
+  no provenance is discarded, not repaired. Do not relax this into
+  "the prompt asks nicely" — a fabricated STAR story gets probed for ten
+  minutes by someone who interviews for a living.
+- Numbers the candidate will state as fact — work authorization
+  (`karani/legal.py`), comp (`coach/comp.py`) — are derived from
+  declared facts and handed to the model as resolved input. The model
+  may phrase around them; it may never originate them.
+
+### 4.13 Unattended billed work needs a switch within reach
+- `coach/trigger.py` spends two calls when a status moves to `screen`
+  or `interview`. It is idempotent on the stages log, records its
+  marker even on failure so a retry cannot double-spend, and obeys
+  `KARANI_AUTO_PREP=off` / `[coach] auto_prep`. conftest sets it off
+  for the same reason it sets `KARANI_INTEL=off`. Any future listener
+  on a state change inherits all three obligations.
+
+### 4.14 The memory ledger is the system of record
 - The `memories` table in Postgres is ground truth; the mem0/pgvector
   index is derived and disposable. Never write memory only to mem0, and
   never let a mem0 failure abort a batch — degrade to `basic` recall.
@@ -258,7 +293,7 @@ Full details in `docs/conventions.md`. The one-liners:
   suite + ruff + a wheel smoke on 3.11/3.12/3.13, with coverage to
   Coveralls (`.github/workflows/ci.yml`).
 - Every new module needs a smoke test at minimum.
-- All 245 existing tests are deterministic (no network, no clock). Keep it
+- All 381 existing tests are deterministic (no network, no clock). Keep it
   that way — use fake clients for LLM calls (see `tests/test_qualification.py`
   and `tests/test_agent.py`), and `httpx.MockTransport` for HTTP (see
   `tests/test_e2e_pipeline.py`).
