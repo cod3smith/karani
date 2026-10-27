@@ -620,6 +620,71 @@ async def record_outcome(job_id: int, outcome: str) -> dict:
     return {"job_id": job_id, "outcome": outcome}
 
 
+@app.tool()
+async def submission_console(limit: int = 50,
+                             output_path: str | None = None,
+                             refresh_questions: bool = False) -> dict:
+    """Build the submission console: one self-contained HTML file listing
+    every pack waiting to be sent, with that job's REAL application
+    questions (read from the Greenhouse/Lever/Ashby public APIs), the
+    answers, and presigned document links. Free - no LLM call. karani
+    never submits: open the file, send each application yourself, then
+    call mark_submitted."""
+    import httpx
+
+    from karani.submission import build_console, introspection_enabled
+
+    storage = await _get_storage()
+    if introspection_enabled():
+        async with httpx.AsyncClient(timeout=30,
+                                     follow_redirects=True) as client:
+            result = await build_console(
+                storage, limit=limit, output=output_path, client=client,
+                refresh=refresh_questions)
+    else:
+        result = await build_console(storage, limit=limit,
+                                     output=output_path,
+                                     refresh=refresh_questions)
+    return _jsonable({
+        "path": str(result.path),
+        "packs": len(result.sheets),
+        "forms_from_ats": result.introspected,
+        "fields_needing_you": result.outstanding,
+        "needs_review": result.needs_review,
+        "jobs": [{"job_id": sheet.job_id, "company": sheet.company,
+                  "title": sheet.title, "apply_url": sheet.apply_url,
+                  "outstanding": sheet.outstanding,
+                  "needs_review": sheet.needs_review}
+                 for sheet in result.sheets],
+    })
+
+
+@app.tool()
+async def mark_submitted(job_ids: list[int], warm_path: bool | None = None,
+                         via: str = "console", notes: str = "") -> dict:
+    """Record applications the USER sent (karani never sends them):
+    status `applied`, the timestamp, and a snapshot of the artifact
+    version that went out. This is what arms follow-ups and gives the
+    funnel its labels. `via`: console | portal | email | referral."""
+    from karani.notionsync import maybe_sync_job
+
+    storage = await _get_storage()
+    done: list[int] = []
+    missing: list[int] = []
+    for job_id in job_ids:
+        if await storage.mark_submitted(job_id, via=via,
+                                        warm_path=warm_path, notes=notes):
+            done.append(job_id)
+            await maybe_sync_job(storage, job_id)
+        else:
+            missing.append(job_id)
+    if missing:
+        raise ToolError(
+            "no job with id=" + ", ".join(str(i) for i in missing)
+            + (f" (recorded {done})" if done else ""))
+    return {"submitted": done, "via": via, "warm_path": warm_path}
+
+
 # -----------------------  memory  -----------------------
 
 @app.tool()

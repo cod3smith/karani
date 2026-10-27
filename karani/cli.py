@@ -1,6 +1,7 @@
 """The `karani` CLI — every verb of the pipeline behind one command.
 
 Pipeline: run, qualify, digest, draft, prep, followup, autopilot, refilter
+Submit:   console (build the field sheet), submitted (record the send)
 Review:   actions, funnel, coach, variant, stats, verdict, status, stage,
           asked, outcome
 Inbox:    watch (read-only Gmail; never sends)
@@ -279,6 +280,75 @@ async def _outcome(job_id: int, outcome: str) -> int:
     finally:
         await storage.close()
     return 0
+
+
+# -----------------------  submission console  -----------------------
+
+async def _console(limit: int, output: str | None, refresh: bool) -> int:
+    """Build the one-file submission console. Free: no LLM call."""
+    _configure_logging()
+    import httpx
+
+    from karani.submission import build_console, introspection_enabled
+
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        if introspection_enabled():
+            async with httpx.AsyncClient(
+                headers={"User-Agent": settings.user_agent},
+                timeout=settings.http_timeout_seconds,
+                follow_redirects=True,
+            ) as client:
+                result = await build_console(
+                    storage, limit=limit, output=output, client=client,
+                    refresh=refresh)
+        else:
+            result = await build_console(
+                storage, limit=limit, output=output, refresh=refresh)
+
+        count = len(result.sheets)
+        print(f"{count} pack{'' if count == 1 else 's'} -> {result.path}")
+        if count:
+            print(f"  forms read from the ATS: {result.introspected}"
+                  f"/{count}")
+            print(f"  fields still needing you: {result.outstanding}")
+            if result.needs_review:
+                print(f"  {result.needs_review} need a work-authorization "
+                      f"decision before sending")
+            print(f"  open it:  open {result.path}")
+            print("  karani never submits. Send each one yourself, mark it "
+                  "in the console, then run the `karani submitted` command "
+                  "it prints.")
+        return 0
+    finally:
+        await storage.close()
+
+
+async def _submitted(job_ids: list[int], warm_path: bool | None,
+                     via: str) -> int:
+    """Record applications YOU sent: status, timestamp, artifact version."""
+    _configure_logging()
+    from karani.notionsync import maybe_sync_job
+
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    missing: list[int] = []
+    try:
+        for job_id in job_ids:
+            if not await storage.mark_submitted(job_id, via=via,
+                                                warm_path=warm_path):
+                missing.append(job_id)
+                continue
+            row = await storage.get_job(job_id) or {}
+            print(f"job_id={job_id} applied via={via} "
+                  f"{row.get('company_display', '')} - {row.get('title', '')}")
+            await maybe_sync_job(storage, job_id)
+    finally:
+        await storage.close()
+    for job_id in missing:
+        print(f"ERROR: no job with id={job_id}", file=sys.stderr)
+    return 1 if missing else 0
 
 
 # -----------------------  actions / funnel  -----------------------
@@ -1101,6 +1171,30 @@ def main() -> None:
     vr.add_argument("--job", type=int, default=None,
                     help="job id, for `variant assign`")
 
+    con = sub.add_parser(
+        "console",
+        help="build the submission console: one HTML file with every "
+             "pack waiting to be sent, its real ATS questions and the "
+             "answers")
+    con.add_argument("--limit", type=int, default=50)
+    con.add_argument("--output", type=str, default=None,
+                     help="default data/submission_console.html")
+    con.add_argument("--refresh", action="store_true",
+                     help="re-read each job's questions from the ATS")
+
+    smd = sub.add_parser(
+        "submitted",
+        help="record that YOU sent an application: status, timestamp and "
+             "the artifact version that went out")
+    smd.add_argument("job_ids", type=int, nargs="+")
+    sent_group = smd.add_mutually_exclusive_group()
+    sent_group.add_argument("--warm", action="store_true",
+                            help="went through a warm contact or referral")
+    sent_group.add_argument("--cold", action="store_true",
+                            help="cold portal application")
+    smd.add_argument("--via", type=str, default="console",
+                     help="console | portal | email | referral")
+
     pr = sub.add_parser("prep", help="interview prep pack: brief + questions + warm openers")
     pr.add_argument("job_id", type=int)
     pr.add_argument("--provider", type=str, default=None,
@@ -1221,6 +1315,12 @@ def main() -> None:
         sys.exit(asyncio.run(_variant(args.action, args.name, args.dimension,
                                       args.description, args.guidance,
                                       args.job)))
+
+    elif args.cmd == "console":
+        sys.exit(asyncio.run(_console(args.limit, args.output, args.refresh)))
+    elif args.cmd == "submitted":
+        warm = True if args.warm else (False if args.cold else None)
+        sys.exit(asyncio.run(_submitted(args.job_ids, warm, args.via)))
     elif args.cmd == "prep":
         sys.exit(asyncio.run(_prep(args.job_id, args.provider, args.model,
                                    args.resume)))

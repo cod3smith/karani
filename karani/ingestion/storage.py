@@ -109,6 +109,12 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS notion_page_id TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS drafted_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS artifacts JSONB;
 
+-- Submission layer (the console): the form this job actually asks, and
+-- what was sent when the human clicked submit.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS ats_questions JSONB;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS submitted_artifacts JSONB;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS submitted_via TEXT;
+
 -- Company intelligence cache — dossiers built from public probes (GitHub,
 -- Wikipedia, engineering blog). TTL-refreshed; consumed by agent-mode
 -- qualification, interview prep, and follow-up drafting.
@@ -939,6 +945,103 @@ class Storage:
                 "UPDATE jobs SET artifacts = $2::jsonb WHERE id = $1",
                 job_id, json.dumps(artifacts),
             )
+
+    async def set_ats_questions(self, job_id: int, payload: dict) -> None:
+        """Cache this job's introspected application form (submission/
+        questions.py). Re-fetching every console pass would hammer the
+        boards for a form that changes about never."""
+        if self.pool is None:
+            for row in self._memory.values():
+                if row["id"] == job_id:
+                    row["ats_questions"] = payload
+                    return
+            return
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE jobs SET ats_questions = $2::jsonb WHERE id = $1",
+                job_id, json.dumps(payload),
+            )
+
+    async def submission_queue(self, limit: int = 50) -> list[dict]:
+        """Packs waiting to be sent — the console's worklist.
+
+        Same definition as `next_actions`' to_submit bucket (drafting or
+        ready, still open), with the columns the answer sheet needs.
+        """
+        if self.pool is None:
+            rows = [r for r in self._memory.values()
+                    if r.get("application_status") in ("drafting", "ready")
+                    and r.get("active", True) and not r.get("outcome")]
+            rows.sort(key=lambda r: (-(r.get("fit_score") or 0),
+                                     -(r.get("prefilter_score") or 0)))
+            return rows[:limit]
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, source, source_id, company, company_display,
+                       title, apply_url, location_raw, remote_status,
+                       comp_min_usd, comp_max_usd, posted_at, raw,
+                       prefilter, qualification, verdict, fit_score,
+                       prefilter_score, user_verdict, application_status,
+                       draft_path, artifacts, ats_questions
+                  FROM jobs
+                 WHERE application_status IN ('drafting', 'ready')
+                   AND active = TRUE
+                   AND outcome IS NULL
+                 ORDER BY fit_score DESC NULLS LAST, prefilter_score DESC
+                 LIMIT $1
+                """,
+                limit,
+            )
+            return [dict(r) for r in rows]
+
+    async def mark_submitted(
+        self, job_id: int, *, via: str = "console",
+        warm_path: bool | None = None, notes: str = "",
+    ) -> bool:
+        """A human sent this application. karani never does (ADR 0012).
+
+        Snapshots the artifact keys as they were at send time: a later
+        re-draft overwrites `artifacts`, and the audit question is what
+        the company actually received. False when there is no such job.
+        """
+        if self.pool is None:
+            for row in self._memory.values():
+                if row["id"] == job_id:
+                    row["application_status"] = "applied"
+                    row["applied_at"] = datetime.now(timezone.utc)
+                    row["submitted_via"] = via
+                    row["submitted_artifacts"] = dict(row.get("artifacts")
+                                                      or {})
+                    if warm_path is not None:
+                        row["warm_path_used"] = warm_path
+                    row.setdefault("stages", []).append(
+                        {"stage": "submitted", "notes": notes, "at": "now"})
+                    return True
+            return False
+        async with self.pool.acquire() as conn:
+            updated = await conn.fetchval(
+                """
+                UPDATE jobs
+                   SET application_status = 'applied',
+                       applied_at = COALESCE(applied_at, NOW()),
+                       submitted_via = $2,
+                       submitted_artifacts = COALESCE(submitted_artifacts,
+                                                      artifacts),
+                       warm_path_used = COALESCE($3, warm_path_used),
+                       stages = COALESCE(stages, '[]'::jsonb)
+                              || jsonb_build_array(jsonb_build_object(
+                                    'stage', 'submitted',
+                                    'notes', $4::text,
+                                    'at', to_char(NOW(),
+                                          'YYYY-MM-DD"T"HH24:MI:SSZ')
+                                 ))
+                 WHERE id = $1
+             RETURNING id
+                """,
+                job_id, via, warm_path, notes,
+            )
+            return updated is not None
 
     async def drafts_today(self, now: datetime | None = None) -> int:
         """Drafts generated today (UTC) — the autopilot daily-budget gate."""
