@@ -63,10 +63,12 @@ async def draft_for_job(
             log.warning("company intel unavailable for %s; drafting without "
                         "a dossier", company, exc_info=True)
 
+    from karani.experience import load_experience
     user = build_user_prompt(resume=resume, qualification=qual_text,
                              job_row=job_row,
                              keyword_targets=resume_gap["missing"],
-                             work_auth=work_auth, dossier=dossier)
+                             work_auth=work_auth, dossier=dossier,
+                             experience=load_experience())
     raw = await client.complete(system_prompt(), user)
 
     try:

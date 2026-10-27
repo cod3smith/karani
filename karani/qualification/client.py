@@ -98,8 +98,10 @@ async def qualify_one(
     # job and its recalled memories vary per row (ADR 0019).
     user = build_user_prompt(hints=hints, job_row=job_row,
                              memories=memories)
+    from karani.experience import load_experience
     raw = await client.complete(
-        system_prompt(resume=resume, past_verdicts=past_verdicts), user)
+        system_prompt(resume=resume, past_verdicts=past_verdicts,
+                      experience=load_experience()), user)
     try:
         data = _extract_json(raw)
         result = QualificationResult.model_validate(data)

@@ -52,4 +52,40 @@ def test_rules_demand_company_specificity():
 
 
 def test_version_bumped_for_the_personalization_pass():
-    assert DRAFT_PROMPT_VERSION == "draft-v5"
+    assert DRAFT_PROMPT_VERSION == "draft-v6"
+
+
+# --- the career transcript ---
+
+def test_transcript_reaches_both_prompts():
+    """The richest personalization input: the candidate's own account
+    of their career, in the cached half for qualification and in the
+    drafter's material."""
+    from karani.qualification.prompts import system_prompt as qual_system
+    transcript = "At DataQRL the ingestion pipeline fell over every Monday."
+    assert transcript in qual_system(resume="# K", experience=transcript)
+    user = build_user_prompt(resume="# K", qualification="s", job_row=_job(),
+                             keyword_targets=[], experience=transcript)
+    assert transcript in user
+    assert "career_transcript" in user
+
+
+def test_no_transcript_is_normal():
+    from karani.qualification.prompts import system_prompt as qual_system
+    assert "career_transcript" not in qual_system(resume="# K")
+    assert "career_transcript" not in build_user_prompt(
+        resume="# K", qualification="s", job_row=_job(), keyword_targets=[])
+
+
+def test_loader_degrades_on_a_missing_file(tmp_path, monkeypatch):
+    from karani.experience import load_experience
+    monkeypatch.setenv("KARANI_EXPERIENCE", str(tmp_path / "nope.md"))
+    assert load_experience() == ""
+
+
+def test_loader_caps_a_runaway_transcript(tmp_path, monkeypatch):
+    from karani.experience import MAX_CHARS, load_experience
+    f = tmp_path / "experience.md"
+    f.write_text("word " * 40_000)
+    monkeypatch.setenv("KARANI_EXPERIENCE", str(f))
+    assert len(load_experience()) <= MAX_CHARS

@@ -1,0 +1,36 @@
+# Career transcript — speak, don't write
+
+Record yourself talking through your career and paste the transcript
+here. Rambling is fine and actually better: karani wants the detail a
+resume compresses away, not more polished summary.
+
+Delete this guidance once you have real content.
+
+## What to cover, per role
+
+- What the company actually did, and what state the system was in when
+  you arrived. "The ingestion pipeline fell over every Monday" is worth
+  more than "worked on data infrastructure".
+- The problem you were hired to solve, and whether that turned out to
+  be the real problem.
+- Decisions you made and why — especially the ones you argued for
+  against resistance, and the ones you got wrong.
+- Numbers you remember: throughput, latency, cost, team size, how long
+  it took. Approximate is fine; say so.
+- What broke. Incidents, the 3am page, the migration that went
+  sideways, what you changed afterwards.
+- Who you worked with and how: who you convinced, who you mentored,
+  what you owned end to end.
+
+## Also worth saying
+
+- The through-line: what kind of problem you keep coming back to.
+- What you want next, and what you will not do again.
+- Anything the resume understates because it was politically awkward
+  or hard to phrase in a bullet.
+
+## Why this matters
+
+Everything here lands in the cached half of every prompt, so it costs
+almost nothing per application and gives the drafter real material.
+Cover letters stop sounding like the job description read back.

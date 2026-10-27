@@ -28,3 +28,4 @@ logs/
 # Personal hunt configuration — karani.example.toml ships in the wheel
 karani.toml
 .env.backup
+data/experience.md
