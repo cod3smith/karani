@@ -36,6 +36,21 @@ class FakeResponse:
     stop_details = None
 
 
+class _FakeStream:
+    def __init__(self, calls, kwargs):
+        self._calls, self._kwargs = calls, kwargs
+
+    async def __aenter__(self):
+        self._calls.append({**self._kwargs, "_streamed": True})
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def get_final_message(self):
+        return FakeResponse()
+
+
 class FakeMessages:
     def __init__(self):
         self.calls: list[dict] = []
@@ -43,6 +58,9 @@ class FakeMessages:
     async def create(self, **kw):
         self.calls.append(kw)
         return FakeResponse()
+
+    def stream(self, **kw):
+        return _FakeStream(self.calls, kw)
 
 
 class FakeClient:
@@ -149,6 +167,21 @@ async def test_chat_turn_normalizes_tool_calls(monkeypatch):
             self.calls.append(kw)
             return ToolResponse()
 
+        def stream(self, **kw):
+            messages = self
+
+            class S:
+                async def __aenter__(s):
+                    messages.calls.append(kw)
+                    return s
+
+                async def __aexit__(s, *exc):
+                    return False
+
+                async def get_final_message(s):
+                    return ToolResponse()
+            return S()
+
     class ToolClient(FakeClient):
         def __init__(self, *a, **kw):
             self.messages = ToolMessages()
@@ -213,3 +246,27 @@ async def test_openai_style_transcript_is_translated(provider):
     assert result_blocks and result_blocks[0]["tool_use_id"] == "call_1"
     assert "no tool_calls key" not in str(msgs)
     assert all("tool_calls" not in m for m in msgs)
+
+
+# --- long outputs must stream ---
+
+@pytest.mark.asyncio
+async def test_large_max_tokens_uses_streaming(monkeypatch):
+    """The SDK raises ValueError on non-streaming requests whose
+    max_tokens could run past 10 minutes — which is every draft once
+    the pack ceiling went to 32k."""
+    import anthropic as sdk
+    monkeypatch.setattr(sdk, "AsyncAnthropic", FakeClient)
+    p = AnthropicQualifier(api_key="k", max_tokens=32000)
+    out = await p.complete("sys", "user")
+    assert out == '{"fit_score": 80}'
+    assert p._client.messages.calls[0]["_streamed"] is True
+
+
+@pytest.mark.asyncio
+async def test_small_max_tokens_stays_non_streaming(monkeypatch):
+    import anthropic as sdk
+    monkeypatch.setattr(sdk, "AsyncAnthropic", FakeClient)
+    p = AnthropicQualifier(api_key="k", max_tokens=4000)
+    await p.complete("sys", "user")
+    assert "_streamed" not in p._client.messages.calls[0]

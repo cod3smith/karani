@@ -43,6 +43,10 @@ DEFAULT_MAX_TOKENS = int(os.getenv("QUAL_MAX_TOKENS", "16000"))
 # Opus 4.5/4.6 generation need 4096 — a reason not to route bulk work
 # there, since karani's stable prefix is ~3k tokens.
 MIN_CACHEABLE_TOKENS = 512
+# Above this ceiling the SDK refuses a non-streaming request outright
+# ("Streaming is required for operations that may take longer than 10
+# minutes"), which is every draft since the pack ceiling went to 32k.
+STREAM_ABOVE_MAX_TOKENS = 8192
 _CHARS_PER_TOKEN = 3.7      # rough; only gates the cache marker
 
 
@@ -179,6 +183,8 @@ class AnthropicQualifier:
         return normalized
 
     async def _send(self, **kwargs):
+        """One request, retried. Streams when the output ceiling is high
+        enough that the SDK would reject a blocking call."""
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=2, min=2, max=30),
@@ -187,6 +193,10 @@ class AnthropicQualifier:
         ):
             with attempt:
                 try:
+                    if self._max_tokens > STREAM_ABOVE_MAX_TOKENS:
+                        async with self._client.messages.stream(
+                                **kwargs) as stream:
+                            return await stream.get_final_message()
                     return await self._client.messages.create(**kwargs)
                 except Exception as e:
                     msg = str(e).lower()
