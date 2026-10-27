@@ -28,8 +28,10 @@ from .models import (
     WatchReport,
 )
 
+from .runner import watch
+
 __all__ = [
     "GMAIL_READONLY_SCOPE", "SCOPES", "GmailClient", "GmailAuthError",
     "Classification", "InboundMessage", "Match", "ProcessedMessage",
-    "ReplyDraft", "WatchReport",
+    "ReplyDraft", "WatchReport", "watch",
 ]
