@@ -119,7 +119,29 @@ it is the version that actually compounds.
 
 ## 5. Architecture
 
-### 5.1 Profile core
+### 5.1 Profile core — built 2026-10-27
+
+Three sources merged, resume first because it is the curated one
+(`karani/profile/`): the resume parsed into positions and bullets,
+LinkedIn's official data export (ZIP of CSVs the member downloads),
+and the candidate's own site. Plus a fourth input the original design
+did not anticipate and which turned out to matter more than any of
+them: a **career transcript** (`data/experience.md`), the candidate
+talking through nine years in their own words. A resume is compressed
+to the point of being generic; the transcript is where the decision
+that made a system work still exists.
+
+All of it renders into the cached stable prefix (ADR 0019), so a
+12,000-word transcript costs ~$0.0002 per row after the first.
+Measured end to end: a full pack is $0.2974.
+
+What is NOT done from the original sketch: tailoring still rewrites
+the resume markdown rather than selecting from profile records. The
+drafter now *sees* the structured profile, which captures most of the
+value; a selection-based tailorer is deferred until there is outcome
+data to say whether it helps.
+
+### 5.1b Original sketch
 
 One structured model as the source of truth — positions, projects,
 skills, education, achievements — rather than resume prose. Sources:
@@ -200,7 +222,7 @@ coach surface is a weekly read over that ledger.
 
 | Phase | Deliverable | Unblocks |
 |---|---|---|
-| 1 | Profile core + DOCX/PDF renderers | submission at all |
+| 1 | **DONE 2026-10-27.** Profile core + DOCX/PDF renderers + career transcript | submission at all |
 | 2 | ATS question introspection + console + write-back + assisted autofill + email-apply path | the one-hour session; first labels |
 | 3 | Gmail watcher + state machine | outcomes without manual entry |
 | 4 | Prep on trigger | interviews |
