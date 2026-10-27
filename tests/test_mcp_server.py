@@ -102,7 +102,7 @@ async def test_tool_listing():
         "notify_slack", "notion_sync", "autopilot", "record_verdict",
         "set_status",
         "add_stage", "record_outcome", "record_question", "remember",
-        "recall",
+        "recall", "submission_console", "mark_submitted",
     }
 
 
@@ -452,3 +452,25 @@ async def test_in_memory_state_persists_across_tool_calls(storage):
     await _call("set_status", {"job_id": job_id, "status": "ready"})
     detail = await _call("get_job", {"job_id": job_id})
     assert detail["application_status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_submission_console_and_mark_submitted_tools(storage, tmp_path):
+    job_id = await _seed(storage)
+    await _call("set_status", {"job_id": job_id, "status": "ready"})
+
+    out = str(tmp_path / "console.html")
+    built = await _call("submission_console", {"output_path": out})
+    assert built["packs"] == 1
+    assert built["path"] == out
+    assert "Senior Backend Engineer" in (tmp_path / "console.html").read_text()
+
+    sent = await _call("mark_submitted", {"job_ids": [job_id],
+                                          "warm_path": False})
+    assert sent["submitted"] == [job_id]
+    row = await storage.get_job(job_id)
+    assert row["application_status"] == "applied"
+    assert row["submitted_via"] == "console"
+
+    with pytest.raises(ToolError, match="no job with id"):
+        await srv.app.call_tool("mark_submitted", {"job_ids": [999999]})
