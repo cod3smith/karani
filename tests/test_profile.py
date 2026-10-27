@@ -153,3 +153,32 @@ def test_load_profile_works_with_no_external_sources(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     p = load_profile(RESUME)
     assert p.positions and p.sources == ("resume",)
+
+
+# --- sections the first parser dropped on the floor ---
+
+RICH = RESUME + """
+## Selected Projects
+
+### NeoRx — causal drug-resistance pipeline
+Do-calculus with RL, F1 0.474 across 7 disease validations.
+
+## Skills
+
+**Languages:** Python, Go, TypeScript
+**Infra:** Kubernetes, Kafka, Postgres
+"""
+
+
+def test_skills_and_projects_are_extracted():
+    """They were dropped, so the records-tailored resume lost its
+    Skills section and keyword coverage fell from 0.57 to 0.33."""
+    p = parse_resume(RICH)
+    assert "Python" in p.skills and "Kubernetes" in p.skills
+    assert any("NeoRx" in proj.name for proj in p.projects)
+
+
+def test_skill_extraction_splits_labelled_lines():
+    p = parse_resume(RICH)
+    assert "Languages" not in p.skills      # the label is not a skill
+    assert "Go" in p.skills
