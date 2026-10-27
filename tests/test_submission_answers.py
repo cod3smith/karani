@@ -157,6 +157,26 @@ def test_an_unmatched_free_text_question_asks_for_input():
     assert sheet.needs_review is True
 
 
+def test_drafted_prose_the_form_has_no_field_for_still_reaches_the_sheet():
+    pack = PackContent(
+        cover_letter="Dear Acme, I built the thing.",
+        answers={"Describe a system you are proud of": "A 400-node job."})
+    sheet = _sheet([Question(key="first_name", label="First name")],
+                   pack=pack)
+    values = {a.label: a for a in sheet.answers}
+    extra = values["Describe a system you are proud of"]
+    assert extra.value == "A 400-node job."
+    assert extra.source == "pack" and extra.needs_input is False
+    assert values["Cover letter (text)"].value == "Dear Acme, I built the thing."
+
+
+def test_a_matched_answer_is_not_also_appended_as_an_extra():
+    pack = PackContent(answers={"Why Acme?": "Because."})
+    sheet = _sheet([Question(key="q", label="Why Acme?", kind="textarea")],
+                   pack=pack)
+    assert [a.value for a in sheet.answers] == ["Because."]
+
+
 def test_a_why_question_falls_back_to_the_positioning_line():
     pack = PackContent(positioning="Nine years of data platforms.")
     q = Question(key="q_why", kind="textarea",

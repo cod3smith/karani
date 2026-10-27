@@ -201,9 +201,9 @@ def _tokens(text: str) -> set[str]:
             if len(t) > 2 and t not in _STOPWORDS}
 
 
-def best_pack_answer(label: str, answers: dict[str, str],
-                     floor: float = 0.45) -> str:
-    """The drafted answer for the same question, if there is one.
+def best_pack_match(label: str, answers: dict[str, str],
+                    floor: float = 0.45) -> tuple[str, str]:
+    """The drafted (question, answer) for the same thing the form asks.
 
     Jaccard over content words with a floor: a near-miss match is worse
     than an empty field, because the empty field gets filled by a human
@@ -211,16 +211,21 @@ def best_pack_answer(label: str, answers: dict[str, str],
     """
     want = _tokens(label)
     if not want:
-        return ""
-    best, score = "", 0.0
+        return "", ""
+    best, score = ("", ""), 0.0
     for question, answer in (answers or {}).items():
         have = _tokens(question)
         if not have:
             continue
         overlap = len(want & have) / len(want | have)
         if overlap > score:
-            best, score = answer, overlap
-    return best if score >= floor else ""
+            best, score = (question, answer), overlap
+    return best if score >= floor else ("", "")
+
+
+def best_pack_answer(label: str, answers: dict[str, str],
+                     floor: float = 0.45) -> str:
+    return best_pack_match(label, answers, floor)[1]
 
 
 def _choice(question, want_yes: bool) -> str:
@@ -281,11 +286,20 @@ def build_answer_sheet(
     auth = resolve_work_authorization(job_row, legal)
     answers: list[Answer] = []
 
+    used: set[str] = set()
     for question in questions.questions:
+        slot = slot_for(question)
+        drafted = ""
+        if not slot:
+            matched, drafted = best_pack_match(question.label, pack.answers)
+            if matched:
+                used.add(matched)
         answers.append(_answer_one(
-            question, slot_for(question), job_row=job_row, auth=auth,
-            identity=identity, pack=pack, documents=documents,
+            question, slot, job_row=job_row, auth=auth, identity=identity,
+            pack=pack, drafted=drafted, documents=documents,
             target_comp_usd=target_comp_usd))
+
+    answers += _unplaced_pack_answers(pack, used, answers)
 
     needs_review = bool(auth.needs_review) or any(
         a.required and a.needs_input for a in answers)
@@ -303,7 +317,8 @@ def build_answer_sheet(
 
 
 def _answer_one(question, slot: str, *, job_row: dict, auth,
-                identity: Identity, pack, documents: dict[str, str],
+                identity: Identity, pack, drafted: str,
+                documents: dict[str, str],
                 target_comp_usd: int | None) -> Answer:
     def made(value: str, source: str, note: str = "") -> Answer:
         return Answer(key=question.key, label=question.label,
@@ -368,13 +383,41 @@ def _answer_one(question, slot: str, *, job_row: dict, auth,
         return made(_how_heard(job_row), "job")
 
     # Free text: the drafter may already have answered this exact
-    # question for this job.
-    drafted = best_pack_answer(question.label, pack.answers)
+    # question for this job (matched by the caller).
     if not drafted and question.kind in ("textarea", "text") and \
             _WHY.search(question.label or ""):
         drafted = pack.positioning
     return made(drafted, "pack")
 
 
+def _unplaced_pack_answers(pack, used: set[str],
+                           placed: list[Answer]) -> list[Answer]:
+    """Drafted prose the form had no field for.
+
+    The question set is often the fallback, and a company asks "tell us
+    about a hard problem" in words the drafter never saw. Dropping
+    those answers off the console would waste the one part of the pack
+    that cost money to produce, so they ride along at the bottom.
+    """
+    extras: list[Answer] = []
+    for index, (question, answer) in enumerate((pack.answers or {}).items()):
+        if question in used or not answer:
+            continue
+        extras.append(Answer(
+            key=f"pack_{index}", label=question, kind="textarea",
+            value=answer, source="pack",
+            note="Drafted for this job - no matching field on the form, "
+                 "so check whether it is asked in different words."))
+    if pack.cover_letter and not any(a.value == pack.cover_letter
+                                     for a in placed):
+        extras.append(Answer(
+            key="cover_letter_text", label="Cover letter (text)",
+            kind="textarea", value=pack.cover_letter, source="pack",
+            note="For a form that wants the letter inline rather than "
+                 "as a file."))
+    return extras
+
+
 __all__ = ["Answer", "AnswerSheet", "Identity", "best_pack_answer",
+           "best_pack_match",
            "build_answer_sheet", "identity_from", "slot_for"]
