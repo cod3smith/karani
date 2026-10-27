@@ -1,7 +1,8 @@
 """The `karani` CLI — every verb of the pipeline behind one command.
 
 Pipeline: run, qualify, digest, draft, prep, followup, autopilot, refilter
-Review:   actions, funnel, stats, verdict, status, stage, asked, outcome
+Review:   actions, funnel, coach, variant, stats, verdict, status, stage,
+          asked, outcome
 Context:  remember, recall, reindex, intel, notion, notify
 Setup:    init, config, hunt, unschedule, infra, mcp, slack, hourly
 """
@@ -324,9 +325,42 @@ async def _funnel() -> int:
                     print(f"  {key:<20} applied={b['applied']:<4} "
                           f"responded={b['responded']:<4} "
                           f"rate={b['response_rate']:.1%}")
+        # The ledger-backed half: positioning angle, variant, company,
+        # comp band, time-to-first-response, and the promotion verdict.
+        from karani.analytics.console import print_conversion
+        await print_conversion(storage)
     finally:
         await storage.close()
     return 0
+
+
+async def _coach(window_days: int, slack: bool, save: str | None,
+                 docs: bool) -> int:
+    _configure_logging()
+    from karani.analytics.console import run_coach
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        return await run_coach(storage, window_days=window_days,
+                               slack=slack, save=save, docs=docs)
+    finally:
+        await storage.close()
+
+
+async def _variant(action: str, name: str | None, dimension: str,
+                   description: str, guidance: str,
+                   job_id: int | None) -> int:
+    _configure_logging()
+    from karani.analytics.console import run_variant
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        return await run_variant(storage, action, name=name,
+                                 dimension=dimension,
+                                 description=description, guidance=guidance,
+                                 job_id=job_id)
+    finally:
+        await storage.close()
 
 
 # -----------------------  prep / followup / intel / notify  -----------------------
@@ -988,6 +1022,28 @@ def main() -> None:
 
     sub.add_parser("funnel", help="conversion funnel: response/interview/offer rates")
 
+    ch = sub.add_parser("coach", help="weekly review over the conversion ledger")
+    ch.add_argument("--window-days", type=int, default=7)
+    ch.add_argument("--slack", action="store_true",
+                    help="also post the review as a Slack card")
+    ch.add_argument("--save", type=str, default=None,
+                    help="write the review markdown to this path")
+    ch.add_argument("--docs", action="store_true",
+                    help="with --save, also render .docx/.pdf")
+
+    vr = sub.add_parser("variant",
+                        help="strategy variants: list, add, retire, assign")
+    vr.add_argument("action", choices=["list", "add", "retire", "assign"])
+    vr.add_argument("name", nargs="?", default=None)
+    vr.add_argument("--dimension", default="positioning",
+                    choices=["positioning", "draft_prompt", "resume_order",
+                             "outreach"])
+    vr.add_argument("--description", default="")
+    vr.add_argument("--guidance", default="",
+                    help="what a drafter should actually do differently")
+    vr.add_argument("--job", type=int, default=None,
+                    help="job id, for `variant assign`")
+
     pr = sub.add_parser("prep", help="interview prep pack: brief + questions + warm openers")
     pr.add_argument("job_id", type=int)
     pr.add_argument("--provider", type=str, default=None,
@@ -1091,6 +1147,13 @@ def main() -> None:
         sys.exit(asyncio.run(_actions(args.review_limit, args.follow_up_days)))
     elif args.cmd == "funnel":
         sys.exit(asyncio.run(_funnel()))
+    elif args.cmd == "coach":
+        sys.exit(asyncio.run(_coach(args.window_days, args.slack,
+                                    args.save, args.docs)))
+    elif args.cmd == "variant":
+        sys.exit(asyncio.run(_variant(args.action, args.name, args.dimension,
+                                      args.description, args.guidance,
+                                      args.job)))
     elif args.cmd == "prep":
         sys.exit(asyncio.run(_prep(args.job_id, args.provider, args.model,
                                    args.resume)))

@@ -113,10 +113,12 @@ async def run_coach(storage, *, window_days: int = 7, slack: bool = False,
                 print(f"wrote {doc_path}")
 
     if slack:
-        import os
-        channel = os.getenv("SLACK_CHANNEL", "")
+        # The canonical resolver, not a raw env read — see
+        # tests/test_config.py::test_no_raw_delivery_env_reads_outside_helpers.
+        from karani.slackbridge import configured_channel
+        channel = configured_channel()
         if not channel:
-            print("\nSLACK_CHANNEL not set — skipping the Slack card.")
+            print("\nNo Slack channel configured — skipping the Slack card.")
             return 0
         try:
             from karani.slackbridge.client import SlackClient

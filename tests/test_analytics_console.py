@@ -77,3 +77,12 @@ async def test_assign_with_no_variants_registered_explains_itself(capsys):
     await storage.connect()
     assert await run_variant(storage, "assign", job_id=1) == 1
     assert "no active" in capsys.readouterr().out.lower()
+
+
+@pytest.mark.asyncio
+async def test_coach_slack_delivery_is_skipped_without_a_channel(capsys):
+    """conftest strips SLACK_* — the command must degrade, not dial out."""
+    storage = Storage("")
+    await storage.connect()
+    assert await run_coach(storage, slack=True) == 0
+    assert "skipping the Slack card" in capsys.readouterr().out

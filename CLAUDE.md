@@ -51,6 +51,12 @@ background). It:
     coverage per draft, cached company dossiers (`karani/intel/`), warm-path
     candidates, interview prep packs, and dossier-hooked follow-ups —
     all measured through `funnel_stats` (roadmap Tier 1.5).
+14. **Measures** (`karani/analytics/`, `karani funnel` / `coach` /
+    `variant`): a conversion ledger with one durable row per
+    application, conversion by positioning angle / variant / company /
+    comp band, time-to-first-response, named strategy variants with a
+    promotion rule that refuses to crown a winner on a small sample,
+    and a derived weekly coach review. See ADR 0022.
 
 **Positioning:** two role shapes qualify — (1) *companies that hire
 globally at SF pay bands regardless of candidate location*, and
@@ -99,6 +105,8 @@ karani/                              (repo)
 │   ├── autopilot/                   ← continuous hunt: pack + review card (ADR 0012)
 │   ├── orchestration/               ← LangGraph hourly pass (ADR 0013)
 │   ├── artifacts/                   ← MinIO/S3 per-job objects + presigned links (ADR 0014)
+│   ├── analytics/                   ← conversion ledger · Wilson-interval stats ·
+│   │     strategy variants + promotion rule · weekly coach review (ADR 0022)
 │   └── mcp_server/                  ← MCP interface, 25 tools, thin adapter (ADR 0008)
 │
 ├── docker-compose.yml               ← dev infra (pgvector db :5433, minio :9010, ollama)
@@ -106,7 +114,7 @@ karani/                              (repo)
 ├── drafts/                          ← generated packs (gitignored)
 ├── tests/                           ← 245 deterministic + 12 Postgres-marked (`make test-pg`)
 └── docs/                            ← vision · architecture · roadmap · memory ·
-      conventions · operations · adrs/ (0001-0021) ·
+      conventions · operations · adrs/ (0001-0022) ·
       superpowers/specs/ (design docs)
 ```
 
@@ -220,6 +228,22 @@ you'll silently degrade the pipeline in a way that's hard to spot.
   asserts the prefix is byte-identical across jobs.
 - Tests must never reach a billed endpoint. conftest strips
   ANTHROPIC / OPENROUTER / OPENAI keys; pass dummies explicitly.
+
+### 4.13 Conversion claims are segmented and interval-reported (ADR 0022)
+- **A fit score is only comparable within the model and prompt version
+  that produced it.** Measured 2026-10 over 598 rows: Haiku 5.5 mean
+  38 (2 rows above 80), qwen3:4b mean 47 (31 above 80), Kimi 51. The
+  autopilot floor had been tuned against Kimi's scale and matched
+  almost nothing. `karani/analytics/funnel.py` therefore pools fit
+  bands only when one scorer produced every score, and otherwise
+  reports per-scale with a warning. Never add a comparison across
+  applications that ignores `qualify_model` / `prompt_version`.
+- **Never promote a variant without the stated minimum sample.**
+  `MIN_SAMPLE_PER_ARM` on each of two arms, plus non-overlapping 95%
+  Wilson intervals. `tests/test_analytics_stats.py` pins that three
+  applications do not produce a winner; do not relax it.
+- Every rate ships with its interval. A bare percentage over a handful
+  of applications is a lie told with arithmetic.
 
 ### 4.12 The memory ledger is the system of record
 - The `memories` table in Postgres is ground truth; the mem0/pgvector
