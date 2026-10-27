@@ -56,8 +56,10 @@ background). It:
 globally at SF pay bands regardless of candidate location*, and
 (2) *roles that sponsor a visa + relocation, EU and Japan preferred*
 (local top-of-market comp acceptable there). Target roles: software
-engineering, research engineering, ML/AI — computational-bio roles are
-excluded. See `docs/vision.md`.
+engineering, research engineering, ML/AI — **including
+computational-biology research engineering since 2026-10 (ADR 0021)**,
+where the work is building systems and models rather than wet-lab
+science. See `docs/vision.md`.
 
 ---
 
@@ -104,7 +106,7 @@ karani/                              (repo)
 ├── drafts/                          ← generated packs (gitignored)
 ├── tests/                           ← 245 deterministic + 12 Postgres-marked (`make test-pg`)
 └── docs/                            ← vision · architecture · roadmap · memory ·
-      conventions · operations · adrs/ (0001-0019) ·
+      conventions · operations · adrs/ (0001-0021) ·
       superpowers/specs/ (design docs)
 ```
 
@@ -147,6 +149,12 @@ you'll silently degrade the pipeline in a way that's hard to spot.
   reason the pipeline exists, but the *filter* is location-agnostic (a US-only
   role gets vetoed whether Kelyn's in Nairobi, Berlin, or Buenos Aires).
 - `min_comp_usd` default is $160k. Below that = not SF-band = drop.
+- **Extension (2026-10, ADR 0021):** built-in title exclusions are
+  liftable via `[profile] allow_titles`. Comp-bio research engineering
+  is in scope for this candidate; wet-lab terms (`medicinal chemist`,
+  `chemistry`) stay excluded. When lifting a term, name every term
+  that matches the title — allowing "computational biologist" does
+  nothing while "biologist" is still excluded.
 - **Extension (2026-08, prompts qual-v3):** `relocation_signals` soften
   geo/onsite vetos — a region-locked or onsite role that sponsors visa +
   relocation (EU/Japan preferred) goes to the LLM instead of being

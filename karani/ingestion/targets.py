@@ -74,10 +74,39 @@ TARGETS: list[Target] = [
     Target(Source.ASHBY, "mistral", "Mistral", False, False,
            "EU"),
 
+    # --- Tier 3b: research-engineering employers (ADR 0021) ---
+    # Research engineering on both sides of the candidate's background:
+    # AI/ML labs, and computational-biology outfits where the work is
+    # building systems and models rather than wet-lab science. These
+    # post on the same ATSes karani already reads, which is why this is
+    # a target list and not a scraper.
+    Target(Source.GREENHOUSE, "deepmind", "Google DeepMind", False, False,
+           "London/global, research engineering"),
+    Target(Source.GREENHOUSE, "allenai", "Allen Institute for AI", False,
+           False, "Seattle, open research"),
+    Target(Source.ASHBY, "perplexityai", "Perplexity", False, False, "SF"),
+    Target(Source.GREENHOUSE, "together", "Together AI", False, False,
+           "distributed"),
+    Target(Source.ASHBY, "runwayml", "Runway", False, False, "NY/remote"),
+    Target(Source.GREENHOUSE, "databricks", "Databricks", False, False,
+           "research + platform, sponsors"),
+    # Computational biology — systems and modelling roles.
+    Target(Source.GREENHOUSE, "recursionpharmaceuticals", "Recursion", False,
+           False, "ML on cellular imaging at scale"),
+    Target(Source.LEVER, "insitro", "insitro", False, False,
+           "ML-driven drug discovery"),
+    Target(Source.GREENHOUSE, "isomorphiclabs", "Isomorphic Labs", False,
+           False, "London, AlphaFold lineage, sponsors"),
+    Target(Source.LEVER, "deepgenomics", "Deep Genomics", False, False,
+           "Toronto, RNA therapeutics ML"),
+    Target(Source.GREENHOUSE, "benevolentai", "BenevolentAI", False, False,
+           "London/EU, sponsors"),
+    Target(Source.GREENHOUSE, "arcinstitute", "Arc Institute", False, False,
+           "Palo Alto, research engineering"),
+
     # --- Tier 4: EU / Japan companies known to sponsor relocation ---
     # (Kelyn accepts relocation with visa sponsorship; EU and Japan are
-    # the preferred destinations. Comp-bio companies removed 2026-08 —
-    # target roles are SWE / research engineer / ML.)
+    # the preferred destinations.)
     Target(Source.LEVER, "spotify", "Spotify", False, False,
            "EU, relocates to Stockholm"),
     Target(Source.GREENHOUSE, "datadog", "Datadog", False, False,

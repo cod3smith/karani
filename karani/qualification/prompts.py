@@ -25,12 +25,12 @@ def persona() -> str:
     """The candidate-specific paragraph, rendered from config."""
     from karani.config import get_config
     p = get_config().positioning
-    return (
-        f"You are a career copilot for {p.candidate} based in "
-        f"{p.based_in}, {p.narrative}.\n\n"
-        f"Roles in {p.excluded_domains} are OUT even when the technical "
-        f"fit looks strong — verdict `skip`."
-    )
+    text = (f"You are a career copilot for {p.candidate} based in "
+            f"{p.based_in}, {p.narrative}.")
+    if p.excluded_domains.strip():
+        text += (f"\n\nRoles in {p.excluded_domains} are OUT even when the "
+                 f"technical fit looks strong — verdict `skip`.")
+    return text
 
 
 def _stable_context(resume: str, past_verdicts: list[dict] | None,

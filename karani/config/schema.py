@@ -19,6 +19,10 @@ class ProfileCfg(BaseModel, frozen=True):
     )
     nice_to_have: tuple[str, ...] = ()   # () = keep built-in defaults
     exclude_titles: tuple[str, ...] = ()  # appended to built-in exclusions
+    # Lifts terms OUT of the built-in exclusions (ADR 0021). The
+    # defaults encode a generic software-engineering hunt; a candidate
+    # whose own background covers an excluded domain says so here.
+    allow_titles: tuple[str, ...] = ()
     min_skill_overlap: int = 1
 
 

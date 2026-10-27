@@ -99,6 +99,11 @@ def _apply(cfg: KaraniConfig) -> None:
     profile.DEFAULT_PROFILE = built
 
     # --- gates ---
+    if cfg.profile.allow_titles:
+        allowed = {t.strip().lower() for t in cfg.profile.allow_titles}
+        settings.excluded_title_terms = tuple(
+            t for t in settings.excluded_title_terms
+            if t.strip().lower() not in allowed)
     if cfg.profile.exclude_titles:
         extra = tuple(t for t in cfg.profile.exclude_titles
                       if t not in settings.excluded_title_terms)
