@@ -1431,7 +1431,6 @@ dependencies = [
     { name = "httpx" },
     { name = "lxml" },
     { name = "mcp" },
-    { name = "mem0ai", extra = ["nlp"] },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "tenacity" },
@@ -1454,7 +1453,7 @@ documents = [
     { name = "python-docx" },
 ]
 memory = [
-    { name = "mem0ai" },
+    { name = "mem0ai", extra = ["nlp"] },
     { name = "ollama" },
     { name = "psycopg", extra = ["binary", "pool"] },
 ]
@@ -1476,8 +1475,7 @@ requires-dist = [
     { name = "langgraph", marker = "extra == 'orchestrator'", specifier = ">=0.2" },
     { name = "lxml", specifier = ">=5.0" },
     { name = "mcp", specifier = ">=2" },
-    { name = "mem0ai", marker = "extra == 'memory'", specifier = ">=0.1" },
-    { name = "mem0ai", extras = ["nlp"], specifier = ">=2.0.19" },
+    { name = "mem0ai", extras = ["nlp"], marker = "extra == 'memory'", specifier = ">=2.0.19" },
     { name = "minio", marker = "extra == 'artifacts'", specifier = ">=7.2" },
     { name = "ollama", marker = "extra == 'memory'", specifier = ">=0.3" },
     { name = "psycopg", extras = ["binary", "pool"], marker = "extra == 'memory'", specifier = ">=3.1" },

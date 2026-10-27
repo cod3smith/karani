@@ -142,6 +142,22 @@ Recovering after the venv or tool env is deleted: re-run the two
 install commands above. Nothing else is lost — Postgres, MinIO, and
 the config are all outside the environment.
 
+## Memory layer: the spaCy model
+
+mem0 lemmatises with spaCy, and without the model every memory call
+logs `Failed to load spaCy lemma model`. The `memory` extra installs
+spaCy itself; the model is a separate download, because it is
+published as a GitHub URL rather than on PyPI and a direct-URL
+dependency does not belong in a package other people install:
+
+```bash
+uv sync --extra memory
+uv run python -m spacy download en_core_web_sm
+```
+
+Recall degrades rather than failing without it (ADR 0009), so this is
+a warning to clear, not an outage.
+
 ## Local LLM (Ollama)
 
 The reference config routes `[llm.qualify]` to Ollama (ADR 0017).

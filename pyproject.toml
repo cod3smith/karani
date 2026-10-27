@@ -30,7 +30,6 @@ dependencies = [
     "mcp>=2",              # MCP server (mcp_server/); 2.x API (MCPServer)
     # OpenRouter is the default qualifier provider and uses only httpx.
     # Anthropic direct is available via the `anthropic` extra.
-    "mem0ai[nlp]>=2.0.19",
 ]
 
 [project.urls]
@@ -43,7 +42,9 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "pytest-cov>=5.0", "ruff>=0.5"]
 anthropic = ["anthropic>=0.40"]
 # Semantic index (pgvector via psycopg) + local extraction (ollama client);
 # basic mode needs none of this.
-memory = ["mem0ai>=0.1", "ollama>=0.3", "psycopg[binary,pool]>=3.1"]
+# [nlp] pulls spaCy, which mem0 uses for lemmatisation — without it
+# every memory call logs "Failed to load spaCy lemma model".
+memory = ["mem0ai[nlp]>=2.0.19", "ollama>=0.3", "psycopg[binary,pool]>=3.1"]
 slack = ["slack-sdk>=3.27", "aiohttp>=3.9"]  # Socket Mode listener only; pushes use httpx
 orchestrator = ["langgraph>=0.2"]  # graph-structured background orchestration (ADR 0013)
 artifacts = ["minio>=7.2"]
