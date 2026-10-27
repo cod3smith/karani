@@ -1,4 +1,8 @@
-"""Prep pack + follow-up drafting (fake LLMs, no network)."""
+"""Follow-up drafting (fake LLMs, no network).
+
+Prep moved to karani/coach/ when it stopped being one call;
+its tests live in tests/test_coach_*.py.
+"""
 from __future__ import annotations
 
 import json
@@ -6,25 +10,6 @@ import json
 import pytest
 
 from karani.drafting.followup import FOLLOWUP_PROMPT_VERSION, followup_for_job
-from karani.drafting.prep import PREP_PROMPT_VERSION, prep_for_job
-
-PREP_JSON = json.dumps({
-    "company_brief": "GitLab is a devops platform, fully remote.",
-    "likely_questions": [
-        {"question": "Tell me about running production Rust.",
-         "why": "gap: no Rust experience",
-         "suggested_answer": "Systems Go at DataQRL..."},
-    ],
-    "questions_to_ask": [
-        {"question": "How did the ClickHouse migration from your March post land?",
-         "source_basis": "engineering blog"},
-    ],
-    "warm_openers": [
-        {"contact": "alice", "opener": "Your stream-processing repo overlaps "
-                                       "with my Kafka work."},
-    ],
-    "positioning_reminder": "Lead with data-platform scale.",
-})
 
 FOLLOWUP_JSON = json.dumps({
     "note": "Saw the runner-v2 release land last week. My application for "
@@ -51,38 +36,6 @@ JOB = {"id": 9, "company_display": "GitLab",
        "title": "Senior Backend Engineer",
        "description_text": "Python, Kafka, remote.",
        "applied_at": None}
-
-
-@pytest.mark.asyncio
-async def test_prep_pack(tmp_path):
-    client = CapturingLLM(PREP_JSON)
-    pkg, path = await prep_for_job(
-        client, resume="# Kelyn", job_row=JOB,
-        qualification={"gaps": [{"requirement": "Rust"}]},
-        dossier="## Background\nGitLab is a devops company.",
-        question_bank=["Asked about incident ownership (2025 screen)"],
-        output_path=tmp_path / "prep.md",
-    )
-    # All the context reached the prompt.
-    assert "Rust" in client.last_prompt
-    assert "GitLab is a devops company" in client.last_prompt
-    assert "incident ownership" in client.last_prompt
-    # Structured output landed and rendered.
-    assert pkg.prompt_version == PREP_PROMPT_VERSION
-    assert len(pkg.likely_questions) == 1
-    content = path.read_text()
-    assert "ClickHouse migration" in content
-    assert "Warm-path openers" in content
-
-
-@pytest.mark.asyncio
-async def test_prep_malformed_downgrades(tmp_path):
-    pkg, path = await prep_for_job(
-        CapturingLLM("not json"), resume="R", job_row=JOB,
-        output_path=tmp_path / "prep.md",
-    )
-    assert "PREP FAILED" in pkg.company_brief
-    assert path.exists()
 
 
 @pytest.mark.asyncio

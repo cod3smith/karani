@@ -880,7 +880,8 @@ class Storage:
                         row["warm_path_used"] = warm_path
                     if status == "applied":
                         row["applied_at"] = datetime.now(timezone.utc)
-                    return
+                    break
+            await self._announce_status(job_id, status)
             return
         async with self.pool.acquire() as conn:
             await conn.execute(
@@ -894,6 +895,23 @@ class Storage:
                 """,
                 job_id, status, draft_path, warm_path,
             )
+        await self._announce_status(job_id, status)
+
+    async def _announce_status(self, job_id: int, status: str) -> None:
+        """Tell the coach an application moved (career-runner Phase 4).
+
+        The hook lives here, not in the callers, so prep fires whatever
+        drove the transition — CLI, MCP, a Slack button, or the email
+        watcher. The import is lazy and every failure is swallowed: the
+        state machine is the system of record and must never go down
+        for a downstream listener.
+        """
+        try:
+            from karani import coach
+            await coach.notify_status_change(self, job_id, status)
+        except Exception:  # pragma: no cover - defensive
+            log.warning("status listener failed for job %s (%s)",
+                        job_id, status, exc_info=True)
 
     async def record_draft(
         self, job_id: int, path: str,

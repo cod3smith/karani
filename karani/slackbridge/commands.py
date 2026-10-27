@@ -226,32 +226,28 @@ async def _dispatch(cmd, args, storage, memory,
                 + f"\n\n*Cover letter:*\n>>> {letter}")
 
     if cmd == "prep":
-        from karani.drafting import prep_for_job
-        from karani.intel import dossier_text, get_company_intel
+        from karani.coach import build_prep_pack
         job_id = _need_id(args)
         row = await storage.get_job(job_id)
         if not row:
             return f"No job with id={job_id}."
-        company = row.get("company_display") or row.get("company") or ""
-        intel = await get_company_intel(storage, company)
-        bank = []
-        if memory is not None:
-            bank = [m["content"] for m in await memory.recall(
-                f"{company} interview questions", kind="question", limit=10)]
-        pkg, path = await prep_for_job(
-            make_qualifier(), resume=load_resume().raw_markdown, job_row=row,
-            qualification=row.get("qualification"),
-            dossier=dossier_text(intel), question_bank=bank,
+        result = await build_prep_pack(
+            storage, job_row=row, resume_markdown=load_resume().raw_markdown,
+            client=make_qualifier(),
         )
-        likely = "\n".join(f"• {q.question}"
-                           for q in pkg.likely_questions[:6])
+        pack = result.pack
+        likely = "\n".join(
+            f"• {q.question}"
+            + (f" _(answer with: {q.story_title})_" if q.story_title else "")
+            for q in pack.likely_questions[:6])
         to_ask = "\n".join(f"• {q.question}"
-                           for q in pkg.questions_to_ask[:5])
-        return (f"Prep pack: `{path}`\n\n"
-                f"*Brief:* {pkg.company_brief[:600]}\n\n"
+                           for q in pack.questions_to_ask[:5])
+        return (f"Prep pack: `{result.path}`\n\n"
+                f"*Brief:* {pack.company_brief[:600]}\n\n"
                 f"*They'll likely ask:*\n{likely or '(none)'}\n\n"
                 f"*Ask them:*\n{to_ask or '(none)'}\n\n"
-                f"Full pack (answers + warm openers) in the file.")
+                f"{len(pack.stories)} STAR stories from your own record, "
+                f"comp research and warm openers in the file.")
 
     if cmd == "followup":
         from karani.drafting import followup_for_job

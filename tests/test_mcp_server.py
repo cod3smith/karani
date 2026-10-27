@@ -279,18 +279,20 @@ async def test_prep_and_followup_tools(storage, fake_intel, monkeypatch,
         "company_brief": "brief", "likely_questions": [],
         "questions_to_ask": [{"question": "About the alice repo?",
                               "source_basis": "github"}],
-        "warm_openers": [], "positioning_reminder": "",
+        "warm_openers": [], "comp_notes": "", "red_flags": [],
+        "positioning_reminder": "",
     })
-    # build_application_pack routes each stage through [llm.<task>]
-    # now, so the fake has to sit on the factory itself.
+    # The coach routes both of its calls through [llm.prep] unless an
+    # explicit provider/model override is given, so the fake sits on
+    # the factory. The story-mining call gets the same payload and
+    # yields no stories, which is a valid (thin) pack.
     import karani.qualification as _qual
     monkeypatch.setattr(_qual, "get_qualifier",
                         lambda provider=None, model=None, task="qualify":
-                        ScriptedLLM())
-    monkeypatch.setattr(srv, "_make_qualifier",
-                        lambda p, m: ScriptedLLM(prep_json))
+                        ScriptedLLM(prep_json))
     prep = await _call("prep", {"job_id": job_id})
     assert prep["questions_to_ask"] == ["About the alice repo?"]
+    assert prep["stories"] == []
     assert os.path.exists(prep["path"])
 
     fu_json = json.dumps({"note": "Saw the release land.",

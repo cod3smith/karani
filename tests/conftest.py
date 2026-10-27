@@ -49,6 +49,11 @@ os.environ["KARANI_INTEL"] = "off"
 # API. Tests that exercise the fetch turn it on and supply an
 # httpx.MockTransport client.
 os.environ["KARANI_ATS_QUESTIONS"] = "off"
+# Moving an application to `screen` or `interview` now builds a prep
+# pack unattended (karani/coach/trigger.py). Tests that exercise the
+# state machine must not spend two LLM calls doing it, so the trigger
+# is off by default and the coach's own tests turn it on with fakes.
+os.environ["KARANI_AUTO_PREP"] = "off"
 # The budget guard falls back to the LOCAL provider when a hosted key is
 # absent - which it always is here. Point it at a closed port so a test
 # that reaches a model fails in milliseconds instead of running real

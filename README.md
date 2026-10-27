@@ -223,7 +223,7 @@ Tools map 1:1 onto the CLI verbs:
 | `next_actions` | prioritized worklist: review, draft, submit, follow up |
 | `funnel_stats` | response/interview/offer rates by fit band, source, prompt version |
 | `remember`, `recall` | teach/query the memory layer (see below) |
-| `prep`, `draft_followup` | interview prep pack; dossier-hooked follow-up note (billed) |
+| `prep`, `draft_followup` | interview prep pack (also fires on `screen`/`interview`); dossier-hooked follow-up note (billed) |
 | `company_intel`, `warm_paths` | cached public dossier; warm-path candidates |
 | `notify_slack` | push digest or actions to Slack |
 | `notion_sync` | reconcile the Notion job-hunt board |
@@ -335,11 +335,15 @@ get a deterministic ATS keyword pass (`drafting/keywords.py`): JD terms
 the resume misses feed the prompt, final coverage is persisted per
 application. `warm <company>` ranks public engineers by overlap with
 your skills; mark how you applied with `status <id> applied --warm` /
-`--cold` so the warm-vs-cold split accumulates. `prep <id>` builds an
-interview pack (company brief, gap-derived questions with STAR answers,
-dossier-grounded questions to ask, warm-path openers); after each stage,
-`asked <id> "<question>"` banks what they actually asked — future preps
-for that company recall it. `followup <id>` drafts a note hooked on a
+`--cold` so the warm-vs-cold split accumulates. Moving an application to
+`screen` or `interview` builds an interview pack by itself (ADR 0022):
+a refreshed dossier, gap-derived likely questions, STAR stories mined
+from your own profile records and career transcript with every claim
+traced back, derived comp research for the band, and questions to ask
+— as markdown, .docx and PDF, with a Slack card ahead of the date.
+`prep <id>` is the manual trigger and `KARANI_AUTO_PREP=off` the kill
+switch. After each stage, `asked <id> "<question>"` banks what they
+actually asked — future preps for that company recall it. `followup <id>` drafts a note hooked on a
 fresh company fact; `intel <company>` shows the cached dossier behind
 all of it.
 

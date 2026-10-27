@@ -102,6 +102,12 @@ min_fit = 85
 # verify = true    # agent double-checks each candidate before drafting (billed)
 max_drafts_per_day = 5
 
+[coach]
+# Build an interview prep pack automatically when an application moves
+# to `screen` or `interview` (two billed calls, whatever drove the
+# transition). KARANI_AUTO_PREP=off overrides this at the shell.
+auto_prep = true
+
 # [integrations] — uncomment as you connect them (ids here, tokens in .env)
 # [slack]
 # channel = "D0XXXXXXX"

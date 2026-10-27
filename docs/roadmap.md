@@ -200,7 +200,8 @@ correlate coverage vs response rate.
 
 **Effort:** half-day.
 
-### 1.5.6 Interview prep pack + question bank — SHIPPED (2026-08)
+### 1.5.6 Interview prep pack + question bank — SHIPPED (2026-08),
+### superseded by the coach (2026-10, ADR 0022)
 
 Shipped: `prep` (CLI/MCP/Slack) — company brief from the cached
 `company_intel` dossier, gap-derived likely questions with STAR answers,
@@ -208,6 +209,15 @@ dossier-grounded questions to ask, warm openers. Question bank grows via
 `asked <id> "<question>"` (CLI/Slack) or `record_question` (MCP) —
 the `stage` verbs nudge toward it after every logged stage; prep recalls
 the bank per company.
+
+Superseded by `karani/coach/` (career-runner Phase 4). The verb now
+fires on the transition to `screen` or `interview` rather than on being
+remembered, and the pack is assembled rather than generated: a dossier
+refreshed on a 3-day TTL, STAR stories mined from the profile core and
+the career transcript with every citation verified, derived comp
+research, ATS-safe documents in the job's MinIO prefix, and a Slack
+card ahead of the date. `drafting/prep.py` is gone; prep-v3 supersedes
+prep-v2.
 
 **Motivation:** once response rate rises, screen → onsite conversion is
 the next bottleneck. The qualifier's evidence-backed `gaps` are exactly

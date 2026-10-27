@@ -437,11 +437,9 @@ async def _variant(action: str, name: str | None, dimension: str,
 # -----------------------  prep / followup / intel / notify  -----------------------
 
 async def _prep(job_id: int, provider: str | None, model: str | None,
-                resume_path: str) -> int:
+                resume_path: str, stage: str = "interview") -> int:
     _configure_logging()
-    from karani.drafting import prep_for_job
-    from karani.intel import dossier_text, get_company_intel
-    from karani.memory import MemoryManager
+    from karani.coach import build_prep_pack
     from karani.qualification import get_qualifier
 
     storage = Storage(settings.database_url)
@@ -451,21 +449,25 @@ async def _prep(job_id: int, provider: str | None, model: str | None,
         if not row:
             print(f"ERROR: no job with id={job_id}", file=sys.stderr)
             return 2
-        company = row.get("company_display") or row.get("company") or ""
-        intel = await get_company_intel(storage, company)
-        memory = MemoryManager(storage)
-        bank = [m["content"] for m in await memory.recall(
-            f"{company} interview questions", kind="question", limit=10)]
-        pkg, path = await prep_for_job(
-            get_qualifier(provider=provider, model=model),
-            resume=ResumeProfile.from_file(resume_path).raw_markdown,
-            job_row=row, qualification=row.get("qualification"),
-            dossier=dossier_text(intel), question_bank=bank,
+        result = await build_prep_pack(
+            storage, job_row=row, stage=stage,
+            resume_markdown=ResumeProfile.from_file(resume_path).raw_markdown,
+            client=(get_qualifier(provider=provider, model=model)
+                    if (provider or model) else None),
         )
-        print(f"prep pack: {path}")
-        print(f"  likely_questions={len(pkg.likely_questions)} "
-              f"questions_to_ask={len(pkg.questions_to_ask)} "
-              f"warm_openers={len(pkg.warm_openers)}")
+        pack = result.pack
+        print(f"prep pack: {result.path}")
+        for ext, path in result.documents.items():
+            print(f"  {ext}: {path}")
+        print(f"  likely_questions={len(pack.likely_questions)} "
+              f"questions_to_ask={len(pack.questions_to_ask)} "
+              f"stories={len(pack.stories)} "
+              f"warm_openers={len(pack.warm_openers)}")
+        dropped = [e for e in pack.story_trace
+                   if str(e.get("status", "")).startswith("dropped")]
+        if dropped:
+            print(f"  {len(dropped)} story/stories dropped for unverifiable "
+                  f"provenance (see the trace at the end of the pack)")
         return 0
     finally:
         await storage.close()
@@ -1195,8 +1197,11 @@ def main() -> None:
     smd.add_argument("--via", type=str, default="console",
                      help="console | portal | email | referral")
 
-    pr = sub.add_parser("prep", help="interview prep pack: brief + questions + warm openers")
+    pr = sub.add_parser("prep", help="interview prep pack: dossier + likely "
+                                     "questions + STAR stories + comp")
     pr.add_argument("job_id", type=int)
+    pr.add_argument("--stage", type=str, default="interview",
+                    choices=["screen", "interview"])
     pr.add_argument("--provider", type=str, default=None,
                     choices=[None, "openrouter", "anthropic", "local"])
     pr.add_argument("--model", type=str, default=None)
@@ -1323,7 +1328,7 @@ def main() -> None:
         sys.exit(asyncio.run(_submitted(args.job_ids, warm, args.via)))
     elif args.cmd == "prep":
         sys.exit(asyncio.run(_prep(args.job_id, args.provider, args.model,
-                                   args.resume)))
+                                   args.resume, args.stage)))
     elif args.cmd == "followup":
         sys.exit(asyncio.run(_followup(args.job_id, args.provider,
                                        args.model)))
