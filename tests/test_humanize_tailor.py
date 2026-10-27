@@ -123,7 +123,7 @@ async def test_tailor_resume_writes_file_and_scores(tmp_path):
     assert path.exists()
     assert "DataQRL" in path.read_text()
     assert result.keyword_coverage == 1.0  # tailored version covers all 3
-    assert result.prompt_version == "resume-v1"
+    assert result.prompt_version == "resume-v2"
 
 
 @pytest.mark.asyncio

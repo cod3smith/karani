@@ -16,7 +16,7 @@ import json
 import logging
 from pathlib import Path
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from karani.qualification.client import QualifierClient, _extract_json
 
@@ -25,7 +25,10 @@ from .keywords import coverage, extract_keywords
 
 log = logging.getLogger(__name__)
 
-RESUME_PROMPT_VERSION = "resume-v1"
+# v2: selects over indexed profile records and returns a plan, so every
+#     output bullet cites the record it came from (resume_plan.py). The
+#     prose path below remains for profiles with no parsed positions.
+RESUME_PROMPT_VERSION = "resume-v2"
 
 SYSTEM_PROMPT = """\
 You tailor a senior engineer's resume for one specific role.
@@ -78,6 +81,61 @@ USER_PROMPT_TEMPLATE = """\
 """
 
 
+PLAN_SYSTEM_PROMPT = """\
+You tailor a senior engineer's resume for one specific role by
+SELECTING from their career records — you do not write a resume.
+
+You are given records with ids: [p0] a position, [p0b1] a bullet
+within it. Choose which positions to include, in what order, and which
+bullets, and rewrite each bullet for this role.
+
+Rules:
+- Every bullet you return MUST cite the `source_id` of the record it
+  came from. A bullet with no record behind it is a fabrication.
+- Rewrite for emphasis, never for substance. Keep every number: a
+  figure dropped from a bullet is evidence thrown away, and the
+  original will be restored over your version if you lose one.
+- Order by relevance to THIS job, most relevant first. Leave out what
+  does not serve the application rather than padding.
+- The summary is yours to write for this role, in the JD's vocabulary
+  where honest.
+- Plain and direct. No {tells}.
+
+Return a SINGLE JSON object and NOTHING else:
+
+{{
+  "headline": "<one line, or empty>",
+  "summary": "<2-4 sentences for this role>",
+  "positions": [
+    {{"source_id": "p0",
+      "bullets": [{{"source_id": "p0b1", "text": "<rewritten bullet>"}}]}}
+  ],
+  "changes_summary": "<3-5 bullets on what was reshaped and why>"
+}}
+"""
+
+PLAN_USER_TEMPLATE = """\
+<career_records>
+{records}
+</career_records>
+
+<job>
+<company>{company}</company>
+<title>{title}</title>
+<description>
+{description}
+</description>
+</job>
+
+<qualification_analysis>
+{qualification}
+</qualification_analysis>
+
+<keyword_targets>
+{keyword_targets}
+</keyword_targets>
+"""
+
 class TailoredResume(BaseModel):
     resume_markdown: str
     changes_summary: str = ""
@@ -86,6 +144,10 @@ class TailoredResume(BaseModel):
     prompt_version: str = ""
     job_id: int = 0
     keyword_coverage: float | None = None
+    # The data journey: one entry per output bullet, naming the record
+    # it came from and whether the rewrite was kept (resume_plan.py).
+    trace: list[dict] = Field(default_factory=list)
+    strategy: str = ""          # "records" | "prose"
 
 
 def default_path(job_row: dict, root: str = "drafts") -> Path:
@@ -96,6 +158,42 @@ def default_path(job_row: dict, root: str = "drafts") -> Path:
     return Path(root) / f"resume_{jid:0>5}_{company}.md"
 
 
+async def _tailor_from_records(
+    client, *, profile, resume: str, job_row: dict, qualification,
+    jd: str, targets: list[str],
+) -> TailoredResume | None:
+    """Select over indexed records; None if the model's plan is unusable
+    (the caller then falls back to the prose path)."""
+    from .resume_plan import TailorPlan, apply_plan, render_records
+
+    system = PLAN_SYSTEM_PROMPT.format(tells=", ".join(AI_TELLS[:16]))
+    user = PLAN_USER_TEMPLATE.format(
+        records=render_records(profile),
+        company=job_row.get("company_display") or job_row.get("company") or "",
+        title=job_row.get("title", ""),
+        description=jd[:8000],
+        qualification=(json.dumps(qualification, indent=2, default=str)
+                       if isinstance(qualification, dict)
+                       else (qualification or "(none)")),
+        keyword_targets="\n".join(f"- {t}" for t in targets) or "(none)",
+    )
+    raw = await client.complete(system, user)
+    try:
+        plan = TailorPlan.model_validate(_extract_json(raw))
+    except (json.JSONDecodeError, ValidationError) as e:
+        log.warning("resume plan was malformed (%s); falling back to prose", e)
+        return None
+
+    markdown, trace = apply_plan(profile, plan)
+    kept = [t for t in trace if not t.get("status", "").startswith("dropped")]
+    if not kept:
+        log.warning("resume plan selected nothing usable; falling back")
+        return None
+    return TailoredResume(resume_markdown=markdown,
+                          changes_summary=plan.changes_summary,
+                          trace=trace, strategy="records")
+
+
 async def tailor_resume(
     client: QualifierClient,
     *,
@@ -103,10 +201,38 @@ async def tailor_resume(
     job_row: dict,
     qualification: dict | str | None = None,
     output_path: str | Path | None = None,
+    profile=None,
 ) -> tuple[TailoredResume, Path]:
     jd = job_row.get("description_text") or ""
     jd_keywords = extract_keywords(jd)
     targets = coverage(jd_keywords, resume)["missing"]
+
+    # Records path first: it is traceable and it protects the numbers.
+    # A profile with no parsed positions (or a plan the model fumbles)
+    # falls through to the prose tailorer below.
+    if profile is None:
+        try:
+            from karani.profile import load_profile
+            profile = load_profile(resume)
+        except Exception:
+            log.warning("profile unavailable; tailoring from prose",
+                        exc_info=True)
+    result = None
+    if profile is not None and getattr(profile, "positions", ()):
+        result = await _tailor_from_records(
+            client, profile=profile, resume=resume, job_row=job_row,
+            qualification=qualification, jd=jd, targets=targets)
+
+    if result is not None:
+        result.model = getattr(client, "model_name", "unknown")
+        result.prompt_version = RESUME_PROMPT_VERSION
+        result.job_id = int(job_row.get("id") or 0)
+        result.keyword_coverage = coverage(
+            jd_keywords, result.resume_markdown)["score"]
+        path = Path(output_path) if output_path else default_path(job_row)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(result.resume_markdown, encoding="utf-8")
+        return result, path
 
     system = SYSTEM_PROMPT.format(tells=", ".join(AI_TELLS[:16]))
     user = USER_PROMPT_TEMPLATE.format(
@@ -128,6 +254,7 @@ async def tailor_resume(
             resume_markdown="",
             changes_summary="TAILORING FAILED: malformed LLM output.",
         )
+    result.strategy = "prose"
     result.model = getattr(client, "model_name", "unknown")
     result.prompt_version = RESUME_PROMPT_VERSION
     result.job_id = int(job_row.get("id") or 0)

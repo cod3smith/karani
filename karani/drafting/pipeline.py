@@ -125,6 +125,12 @@ async def build_application_pack(
             "cover_letter_pack.md": pack.draft_path.read_text()}
         if pack.resume and pack.resume.resume_markdown:
             files["resume.md"] = pack.resume.resume_markdown
+            # The data journey: which record each output bullet came
+            # from, and where a rewrite was rejected for losing its
+            # numbers (drafting/resume_plan.py).
+            if getattr(pack.resume, "trace", None):
+                from .resume_plan import trace_report
+                files["tailoring_trace.md"] = trace_report(pack.resume.trace)
 
         # Submission-ready documents (ADR 0020): markdown is not
         # uploadable to any ATS. Best-effort — a renderer that cannot
