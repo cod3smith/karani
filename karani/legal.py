@@ -27,6 +27,7 @@ never an assumed yes.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 # Conservative token -> country map. Only used to name the country a
@@ -117,9 +118,23 @@ def _engagement_phrase(engagement: tuple[str, ...]) -> str:
     return " or ".join((", ".join(parts[:-1]), parts[-1]))
 
 
+def _as_dict(value) -> dict:
+    """JSONB columns arrive as str from asyncpg (no codec is
+    registered), as dict from the in-memory store. Both are normal."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
 def resolve_work_authorization(job_row: dict, legal) -> WorkAuthAnswers:
     """Per-job legal answers from declared facts. Never calls a model."""
-    pf = job_row.get("prefilter") or {}
+    pf = _as_dict(job_row.get("prefilter"))
     remote = pf.get("fully_remote")
     global_hire = pf.get("global_hire_eligible")
     sponsors = pf.get("relocation_support") == "likely_yes"

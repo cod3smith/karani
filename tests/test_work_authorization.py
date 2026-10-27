@@ -169,3 +169,24 @@ def test_region_locked_with_unparseable_location_stays_conservative():
     assert a.authorized_in_role_country is not True
     assert a.needs_review is True
     assert a.viable is False
+
+
+def test_tolerates_prefilter_arriving_as_a_json_string():
+    """Production shape, missed by every test above: asyncpg returns
+    JSONB as str unless a codec is registered, and karani registers
+    none — the rest of the codebase defends with isinstance checks.
+    This resolver assumed dict and raised AttributeError on every real
+    row, which killed drafting outright."""
+    import json
+    row = {"location_raw": "Remote", "prefilter": json.dumps(
+        {"fully_remote": "yes", "global_hire_eligible": "likely_yes"})}
+    a = resolve_work_authorization(row, KELYN)
+    assert a.requires_sponsorship is False
+    assert a.needs_review is False
+
+
+def test_tolerates_missing_or_malformed_prefilter():
+    for bad in (None, "", "not json at all", []):
+        a = resolve_work_authorization(
+            {"location_raw": "Remote", "prefilter": bad}, KELYN)
+        assert a.authorized_in_role_country is not True
