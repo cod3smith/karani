@@ -30,6 +30,7 @@ dependencies = [
     "mcp>=2",              # MCP server (mcp_server/); 2.x API (MCPServer)
     # OpenRouter is the default qualifier provider and uses only httpx.
     # Anthropic direct is available via the `anthropic` extra.
+    "mem0ai[nlp]>=2.0.19",
 ]
 
 [project.urls]
@@ -45,7 +46,10 @@ anthropic = ["anthropic>=0.40"]
 memory = ["mem0ai>=0.1", "ollama>=0.3", "psycopg[binary,pool]>=3.1"]
 slack = ["slack-sdk>=3.27", "aiohttp>=3.9"]  # Socket Mode listener only; pushes use httpx
 orchestrator = ["langgraph>=0.2"]  # graph-structured background orchestration (ADR 0013)
-artifacts = ["minio>=7.2"]  # per-job resume/letter objects + presigned links (ADR 0014)
+artifacts = ["minio>=7.2"]
+# Submission-ready documents: ATS-safe .docx + PDF (ADR 0020). PDF uses
+# headless Chrome, which needs no Python dependency.
+documents = ["python-docx>=1.1"]  # per-job resume/letter objects + presigned links (ADR 0014)
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

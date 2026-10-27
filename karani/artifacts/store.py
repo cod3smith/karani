@@ -86,6 +86,25 @@ class ArtifactStore:
         await asyncio.to_thread(_put)
         return key
 
+    # Submission-ready documents are binary (ADR 0020); markdown is not
+    # something an ATS will accept.
+    CONTENT_TYPES = {
+        ".pdf": "application/pdf",
+        ".docx": ("application/vnd.openxmlformats-officedocument"
+                  ".wordprocessingml.document"),
+        ".md": "text/markdown; charset=utf-8",
+    }
+
+    async def put_bytes(self, key: str, data: bytes) -> str:
+        suffix = key[key.rfind("."):] if "." in key else ""
+        ctype = self.CONTENT_TYPES.get(suffix, "application/octet-stream")
+
+        def _put():
+            self._client.put_object(self._bucket, key, io.BytesIO(data),
+                                    len(data), content_type=ctype)
+        await asyncio.to_thread(_put)
+        return key
+
     async def presign(self, key: str) -> str:
         def _sign():
             return self._client.presigned_get_object(
@@ -93,7 +112,8 @@ class ArtifactStore:
             )
         return await asyncio.to_thread(_sign)
 
-    async def store_pack(self, job_row: dict, files: dict[str, str]) -> dict:
+    async def store_pack(self, job_row: dict,
+                         files: dict[str, str | bytes]) -> dict:
         """Upload {name: content} for one job; returns {name: {key, url}}.
 
         Best-effort per file — one failed upload never sinks the pack.
@@ -104,7 +124,10 @@ class ArtifactStore:
                 continue
             try:
                 key = self.key(job_row, name)
-                await self.put_text(key, content)
+                if isinstance(content, bytes):
+                    await self.put_bytes(key, content)
+                else:
+                    await self.put_text(key, content)
                 out[name] = {"key": key, "url": await self.presign(key)}
             except Exception as exc:
                 log.warning("artifact upload failed for %s: %s", name, exc)

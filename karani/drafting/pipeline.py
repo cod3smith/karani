@@ -48,6 +48,21 @@ class ApplicationPack:
         return self.pkg.cover_letter.startswith("DRAFTING FAILED")
 
 
+def _file_stem(job_row: dict, candidate: str = "") -> str:
+    """`Kelyn_Paul_Njeri_GitLab_Staff_Backend_Engineer` — the filename a
+    recruiter sees in their downloads folder, so it carries the name and
+    the role rather than `resume_final_v2`."""
+    import re
+
+    def slug(text: str, cap: int = 40) -> str:
+        return re.sub(r"[^A-Za-z0-9]+", "_", text or "").strip("_")[:cap]
+
+    parts = [slug(candidate, 30),
+             slug(job_row.get("company_display") or job_row.get("company") or ""),
+             slug(job_row.get("title") or "")]
+    return "_".join(p for p in parts if p) or "application"
+
+
 async def build_application_pack(
     client: QualifierClient | None,
     storage: Storage,
@@ -106,9 +121,33 @@ async def build_application_pack(
     from karani.artifacts import ArtifactStore
     store = await ArtifactStore.create()
     if store is not None:
-        files = {"cover_letter_pack.md": pack.draft_path.read_text()}
+        files: dict[str, str | bytes] = {
+            "cover_letter_pack.md": pack.draft_path.read_text()}
         if pack.resume and pack.resume.resume_markdown:
             files["resume.md"] = pack.resume.resume_markdown
+
+        # Submission-ready documents (ADR 0020): markdown is not
+        # uploadable to any ATS. Best-effort — a renderer that cannot
+        # run must not cost the pack.
+        try:
+            from karani.documents import parse_markdown, render_all
+            candidate = ""
+            if pack.resume is not None:
+                candidate = parse_markdown(pack.resume.resume_markdown).name
+            stem = _file_stem(job_row, candidate)
+            if pack.resume is not None:
+                for ext, blob in render_all(pack.resume.resume_markdown,
+                                            title=f"{candidate} resume").items():
+                    files[f"{stem}_Resume.{ext}"] = blob
+            letter = f"# {candidate}\n\n{pack.pkg.cover_letter}" \
+                if candidate else pack.pkg.cover_letter
+            for ext, blob in render_all(
+                    letter, title=f"{candidate} cover letter").items():
+                files[f"{stem}_Cover_Letter.{ext}"] = blob
+        except Exception:
+            log.warning("document rendering failed; shipping markdown only",
+                        exc_info=True)
+
         pack.artifacts = await store.store_pack(job_row, files)
 
     await storage.record_draft(

@@ -146,9 +146,15 @@ async def test_pipeline_full_flow(tmp_path, monkeypatch):
     assert "Eight years" in pack.draft_path.read_text()
     # Full tailored resume written.
     assert pack.resume_path is not None and pack.resume_path.exists()
-    # Artifacts uploaded with presigned urls.
-    assert set(pack.artifacts) == {"cover_letter_pack.md", "resume.md"}
+    # Artifacts uploaded with presigned urls: the markdown record, plus
+    # the submission-ready documents an ATS will actually accept
+    # (ADR 0020). Filenames carry the candidate and role.
+    assert {"cover_letter_pack.md", "resume.md"} <= set(pack.artifacts)
     assert pack.artifacts["resume.md"]["url"].startswith("https://")
+    docs = [n for n in pack.artifacts if n.endswith((".pdf", ".docx"))]
+    assert any("Resume" in n for n in docs), docs
+    assert any("Cover_Letter" in n for n in docs), docs
+    assert all(n[0].isupper() or "_" in n for n in docs)
     # Provenance recorded.
     updated = await storage.get_job(row["id"])
     assert updated["application_status"] == "drafting"
