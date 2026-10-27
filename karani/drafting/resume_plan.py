@@ -138,8 +138,11 @@ def apply_plan(profile: Profile, plan: TailorPlan) -> tuple[str, list[dict]]:
         for edu in profile.education:
             label = " — ".join(x for x in (edu.school, edu.degree) if x)
             out.append(f"\n### {label or edu.degree}")
-    if profile.skills:
-        out.append("\n## Skills\n\n" + ", ".join(profile.skills[:40]))
+    if profile.skill_groups:
+        out.append("\n## Skills\n")
+        out += [f"- {g}" for g in profile.skill_groups]
+    elif profile.skills:
+        out.append("\n## Skills\n\n" + ", ".join(profile.skills[:60]))
 
     return "\n".join(out).strip() + "\n", trace
 

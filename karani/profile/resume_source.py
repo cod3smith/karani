@@ -59,14 +59,19 @@ def parse_resume(markdown: str) -> Profile:
     # Skills and projects were dropped entirely by the first version,
     # which cost the records-tailored resume its Skills section.
     skills: list[str] = []
+    skill_groups: list[str] = []
     skills_section = _section(doc, "Skills", "Technical Skills",
                               "Core Skills")
     if skills_section:
         for block in skills_section.blocks:
             text = strip_markup(block.text)
-            # "Languages: Python, Go" -> drop the label, keep the list.
+            if text:
+                skill_groups.append(text)
+            # "Languages: Python, Go" -> the label is a keyword too.
             if ":" in text:
-                text = text.split(":", 1)[1]
+                label, text = text.split(":", 1)
+                if label.strip():
+                    skills.append(label.strip())
             skills += [s.strip() for s in re.split(r"[,;|]", text)
                        if s.strip()]
 
@@ -100,4 +105,5 @@ def parse_resume(markdown: str) -> Profile:
                    positions=tuple(positions), education=tuple(education),
                    projects=tuple(projects),
                    skills=tuple(dict.fromkeys(skills)),
+                   skill_groups=tuple(skill_groups),
                    sources=("resume",))

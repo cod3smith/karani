@@ -178,7 +178,20 @@ def test_skills_and_projects_are_extracted():
     assert any("NeoRx" in proj.name for proj in p.projects)
 
 
-def test_skill_extraction_splits_labelled_lines():
+def test_skill_extraction_keeps_both_values_and_labels():
+    """Labels were dropped as "not skills" until a real draft showed
+    the cost: "Monitoring & Observability" is itself a term the JD
+    matches on, and losing it cost measurable keyword coverage."""
     p = parse_resume(RICH)
-    assert "Languages" not in p.skills      # the label is not a skill
-    assert "Go" in p.skills
+    assert "Go" in p.skills                 # the values
+    assert "Languages" in p.skills          # and the category label
+
+
+def test_skill_group_labels_survive():
+    """"Monitoring & Observability: Prometheus, Grafana" — the label is
+    a keyword in its own right, and stripping it cost "observability"
+    from the tailored resume."""
+    p = parse_resume(RICH)
+    grouped = " ".join(p.skill_groups).lower()
+    assert "languages" in grouped and "infra" in grouped
+    assert "python" in grouped

@@ -54,6 +54,10 @@ class Profile(BaseModel):
     projects: tuple[Project, ...] = ()
     education: tuple[Education, ...] = ()
     skills: tuple[str, ...] = ()
+    # The resume's own grouping ("Monitoring & Observability:
+    # Prometheus, Grafana"): more readable than a flat list, and the
+    # labels are keywords an ATS matches on.
+    skill_groups: tuple[str, ...] = ()
     sources: tuple[str, ...] = Field(default=())
 
     def merged_with(self, other: "Profile") -> "Profile":
@@ -78,6 +82,8 @@ class Profile(BaseModel):
                 e for e in other.education
                 if e.school.lower() not in seen_schools),
             skills=tuple(dict.fromkeys(self.skills + other.skills)),
+            skill_groups=tuple(dict.fromkeys(
+                self.skill_groups + other.skill_groups)),
             sources=tuple(dict.fromkeys(self.sources + other.sources)),
         )
 
