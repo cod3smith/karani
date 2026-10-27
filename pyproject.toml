@@ -51,6 +51,10 @@ artifacts = ["minio>=7.2"]
 # Submission-ready documents: ATS-safe .docx + PDF (ADR 0020). PDF uses
 # headless Chrome, which needs no Python dependency.
 documents = ["python-docx>=1.1"]  # per-job resume/letter objects + presigned links (ADR 0014)
+# Response watcher. Only the one-time `karani watch --authorize` consent
+# flow needs this; reading the mailbox is plain httpx against a
+# read-only scope, so the running watcher has no Google dependency.
+gmail = ["google-auth-oauthlib>=1.2"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

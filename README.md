@@ -89,6 +89,7 @@ decisions: `docs/adrs/0001-0015`.
 7. **Qualify** (separate command) — top-scored pending rows go to an LLM with your full resume + hints. Any registered provider works (see **LLM providers** below); the reference config runs this tier free on local Ollama. Returns `fit_score` (0–100), `verdict` (qualified|maybe|skip), evidence-backed strengths, gaps with mitigations, red flags, why-apply, and recommended positioning. Idempotent per resume hash — change your resume and re-qualify.
 8. **Deliver** — autopilot posts full application packs to Slack as review cards; digest + worklist summaries push twice daily; the Notion board mirrors every state change.
 9. **Feedback** — `verdict` command records your reaction (`apply|shortlist|later|skip|applied`) so downstream tuning has ground truth.
+10. **Watch** (separate command) — `karani watch` reads replies over a read-only Gmail scope, classifies them, matches them to an application conservatively, and advances the state machine. It never sends mail; replies are drafted for review. See **Inbox watcher** below.
 
 ## Configure
 
@@ -318,6 +319,32 @@ karani notion sync                    # full reconcile any time
 ```
 
 Slack `sync` and the `notion_sync` MCP tool do the same reconcile.
+
+## Inbox watcher (read-only Gmail)
+
+Replies land in your mailbox, so `karani watch` reads them and moves the
+state machine: it classifies each message (rejection / interview invite
+/ assessment / scheduling / offer / recruiter outreach), matches it to
+an application by ATS sender domain, company name and thread, advances
+the status on a confident match, and drafts a reply for Slack review.
+An unmatched message is reported for manual entry, never guessed at.
+
+The OAuth scope is `gmail.readonly` and nothing else, so karani cannot
+send, delete or mark anything read — drafts only, same rule as never
+submitting an application.
+
+```bash
+# one-time: Google Cloud project + OAuth client + consent — see
+# docs/watcher.md for the exact steps (you must do these yourself)
+uv sync --extra gmail
+karani watch --authorize       # prints GMAIL_REFRESH_TOKEN for .env
+
+karani watch --no-slack        # print the pass
+karani watch --days 30         # wider window
+```
+
+Nothing is scheduled automatically; wire it into the hourly chain once
+you trust what it reports. Full design in `docs/watcher.md`.
 
 ## Scheduling
 

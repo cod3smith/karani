@@ -106,6 +106,9 @@ class LlmCfg(BaseModel, frozen=True):
     prep: LlmTask = LlmTask()
     followup: LlmTask = LlmTask()
     agent: LlmTask = LlmTask()
+    # Inbound-mail classification and reply drafts (karani/watcher).
+    # A seven-way label on a short email — Haiku-class work.
+    email: LlmTask = LlmTask()
 
     def for_task(self, task: str) -> LlmTask:
         specific: LlmTask = getattr(self, task, LlmTask())
@@ -161,6 +164,15 @@ class BudgetCfg(BaseModel, frozen=True):
     warn_at: float = 0.8          # fraction of the cap that warns
 
 
+class WatcherCfg(BaseModel, frozen=True):
+    """Gmail response watcher. Credentials are env-only (GMAIL_*); this
+    section only says how much mail to read."""
+    lookback_days: int = 14
+    max_messages: int = 50
+    # Extra Gmail search terms, e.g. "-category:promotions" or a label.
+    query: str = ""
+
+
 class HuntCfg(BaseModel, frozen=True):
     qualify_limit: int = 50
     min_comp_usd: int | None = None
@@ -180,6 +192,7 @@ class KaraniConfig(BaseModel, frozen=True):
     artifacts: ArtifactsCfg = ArtifactsCfg()
     autopilot: AutopilotCfg = AutopilotCfg()
     hunt: HuntCfg = HuntCfg()
+    watcher: WatcherCfg = WatcherCfg()
     budget: BudgetCfg = BudgetCfg()
     legal: LegalCfg = LegalCfg()
     profile_sources: ProfileSourcesCfg = ProfileSourcesCfg()
