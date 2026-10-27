@@ -23,8 +23,8 @@ from collections import Counter
 
 from karani.ingestion.storage import _fit_band  # shared so bands cannot drift
 
-from .models import (UNASSIGNED, Breakdown, ConversionReport, LedgerEntry,
-                     TimeToResponse)
+from .models import (UNASSIGNED, Breakdown, ConversionReport, FitScale,
+                     LedgerEntry, TimeToResponse)
 from .stats import median, percentile, proportion, wilson_interval
 from .variants import MIN_SAMPLE_PER_ARM, promotion_report
 
@@ -103,6 +103,94 @@ def _time_to_first_response(entries: list[LedgerEntry]) -> TimeToResponse:
     )
 
 
+def _fit_scales(entries: list[LedgerEntry]) -> list[FitScale]:
+    """One `FitScale` per (qualify model, prompt version) in the data.
+
+    A fit score is that scorer's opinion on that scorer's scale. The
+    only honest way to use it comparatively is within a scale, so the
+    scales are surfaced as first-class objects rather than averaged
+    into a single band table.
+    """
+    buckets: dict[tuple[str, str], list[LedgerEntry]] = {}
+    for entry in entries:
+        if entry.fit_score is None:
+            continue
+        key = (entry.qualify_model or "unknown",
+               entry.qualify_prompt_version or "unknown")
+        buckets.setdefault(key, []).append(entry)
+
+    scales = []
+    for (model, version), group in buckets.items():
+        scores = [e.fit_score for e in group if e.fit_score is not None]
+        scales.append(FitScale(
+            qualify_model=model, qualify_prompt_version=version,
+            n=len(group),
+            mean_fit=round(sum(scores) / len(scores), 1) if scores else None,
+            min_fit=min(scores) if scores else None,
+            max_fit=max(scores) if scores else None,
+            bands=_group(group, lambda e: _fit_band(e.fit_score)),
+        ))
+    scales.sort(key=lambda s: (-s.n, s.label))
+    return scales
+
+
+def _scale_warning(scales: list[FitScale]) -> str:
+    if len(scales) < 2:
+        return ""
+    described = "; ".join(
+        f"{s.label} (n={s.n}, mean fit "
+        f"{s.mean_fit if s.mean_fit is not None else 'n/a'})"
+        for s in scales)
+    return (
+        "Fit scores in this ledger come from more than one scorer, and "
+        "they are not comparable: " + described + ". A measured run in "
+        "2026-10 put Haiku 5.5 at a mean of 38 and qwen3:4b at 47 over "
+        "the same kind of postings, so a pooled fit band would mix two "
+        "different scales. Bands are reported per scale instead."
+    )
+
+
+def _confounds(entries: list[LedgerEntry]) -> list[str]:
+    """Anything that varied alongside the arms.
+
+    If one arm was drafted by Opus and the other by Sonnet, the
+    experiment measured the model as much as the angle. Naming that is
+    cheaper than discovering it after a promotion.
+    """
+    arms: dict[str, dict[str, set[str]]] = {}
+    for entry in entries:
+        if not entry.variant:
+            continue
+        slot = arms.setdefault(entry.variant,
+                               {"draft_model": set(),
+                                "draft_prompt_version": set(),
+                                "qualify_model": set()})
+        for field in slot:
+            value = getattr(entry, field) or ""
+            if value:
+                slot[field].add(value)
+    if len(arms) < 2:
+        return []
+
+    labels = {"draft_model": "drafting model",
+              "draft_prompt_version": "draft prompt version",
+              "qualify_model": "qualifying model"}
+    out = []
+    for field, label in labels.items():
+        per_arm = {name: slot[field] for name, slot in arms.items()
+                   if slot[field]}
+        values = set().union(*per_arm.values()) if per_arm else set()
+        if len(values) < 2:
+            continue
+        detail = ", ".join(f"{name} used {'/'.join(sorted(vals))}"
+                           for name, vals in sorted(per_arm.items()))
+        out.append(
+            f"The {label} is not held constant across arms ({detail}). A "
+            f"difference between arms cannot be attributed to the arm "
+            f"alone.")
+    return out
+
+
 def _recurring_gaps(entries: list[LedgerEntry]) -> list[tuple[str, int]]:
     """Which requirements keep showing up in roles that said no.
 
@@ -158,6 +246,9 @@ def conversion_report(
         bucket["applied"] += 1
         bucket["responded"] += int(entry.responded)
 
+    scales = _fit_scales(entries)
+    warning = _scale_warning(scales)
+
     return ConversionReport(
         totals=totals,
         by_variant=_group(entries, lambda e: e.variant or UNASSIGNED),
@@ -168,7 +259,14 @@ def conversion_report(
                           "unknown"),
         by_comp_band=_group(entries, lambda e: comp_band(e.comp_min_usd,
                                                          e.comp_max_usd)),
-        by_fit_band=_group(entries, lambda e: _fit_band(e.fit_score)),
+        # Pooled bands only when one scorer produced every score.
+        by_fit_band=(scales[0].bands if len(scales) == 1 else []),
+        fit_scales=scales,
+        scale_warning=warning,
+        by_qualify_model=_group(entries, lambda e: e.qualify_model or "none"),
+        by_qualify_prompt=_group(entries,
+                                 lambda e: e.qualify_prompt_version or "none"),
+        by_draft_model=_group(entries, lambda e: e.draft_model or "none"),
         by_draft_prompt=_group(entries,
                                lambda e: e.draft_prompt_version or "none"),
         time_to_first_response=_time_to_first_response(entries),
@@ -176,6 +274,7 @@ def conversion_report(
         promotion=promotion_report(arms,
                                    min_sample_per_arm=min_sample_per_arm,
                                    guidance=guidance),
+        confounds=_confounds(entries),
         confidence=_confidence(entries, totals.responded),
     )
 

@@ -159,6 +159,16 @@ def build_review(
                 f"{best.applied} replied ({_pct(best.response_rate)}, 95% CI "
                 f"{_pct(best.ci_low)}-{_pct(best.ci_high)}).")
 
+    # --- incomparable scales and confounded arms ---
+    if report.scale_warning:
+        observations.append(report.scale_warning)
+        actions.append(
+            "Re-score the backlog on one model before reading anything "
+            "into fit bands, or compare only within a scale. A threshold "
+            "tuned on one scorer does not transfer to another.")
+    for confound in report.confounds:
+        observations.append(confound)
+
     # --- silence that should be closed out ---
     stale = [e for e in entries
              if not e.responded and e.outcome is None and e.applied_at
@@ -264,6 +274,18 @@ def render_markdown(review: CoachReview) -> str:
                         ("By comp band", r.by_comp_band)):
         if rows:
             lines += ["", f"## {title}"] + _table(rows)
+
+    if r.fit_scales:
+        lines += ["", "## Fit scales"]
+        if r.scale_warning:
+            lines.append(r.scale_warning)
+        for scale in r.fit_scales:
+            lines.append(
+                f"- **{scale.label}** — n={scale.n}, mean fit "
+                f"{scale.mean_fit if scale.mean_fit is not None else 'n/a'}, "
+                f"range {scale.min_fit}-{scale.max_fit}; "
+                + ", ".join(f"{b.key} {b.responded}/{b.applied}"
+                            for b in scale.bands))
 
     if r.recurring_gaps:
         lines += ["", "## Recurring gaps in rejected applications"]

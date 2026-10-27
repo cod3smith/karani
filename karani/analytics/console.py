@@ -70,6 +70,19 @@ async def print_conversion(storage, *, sync: bool = True,
     _print_rows("by variant", report.by_variant)
     _print_rows("by company", report.by_company)
     _print_rows("by comp band", report.by_comp_band)
+
+    if report.scale_warning:
+        print(f"\n{report.scale_warning}")
+    if report.fit_scales:
+        print("\nfit scales (a score is only comparable within one):")
+        for scale in report.fit_scales:
+            print(f"  {scale.label[:34]:<34} n={scale.n:<4} "
+                  f"mean={scale.mean_fit} "
+                  f"range={scale.min_fit}-{scale.max_fit}")
+    _print_rows("by fit band (pooled — single scale only)",
+                report.by_fit_band)
+    for confound in report.confounds:
+        print(f"\nconfound: {confound}")
     if report.recurring_gaps:
         print("\nrecurring gaps in rejected applications:")
         for gap, n in report.recurring_gaps[:8]:

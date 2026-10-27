@@ -133,6 +133,30 @@ class TimeToResponse(BaseModel):
     note: str = ""
 
 
+class FitScale(BaseModel):
+    """One scorer's fit distribution.
+
+    A fit score is a number produced by a specific model under a
+    specific prompt version, and the scales do not line up: measured
+    over 598 rows in 2026-10, Haiku 5.5 averaged 38 with 2 rows above
+    80 while qwen3:4b averaged 47 with 31 above 80. Treating "85" as
+    one quantity across scorers is how a calibrated threshold silently
+    stops matching anything.
+    """
+    qualify_model: str
+    qualify_prompt_version: str
+    n: int = 0
+    mean_fit: float | None = None
+    min_fit: int | None = None
+    max_fit: int | None = None
+    bands: list[Breakdown] = Field(default_factory=list)
+
+    @property
+    def label(self) -> str:
+        return (f"{self.qualify_model or 'unknown'}"
+                f"@{self.qualify_prompt_version or 'unknown'}")
+
+
 class ConversionReport(BaseModel):
     """The whole measurement surface over the ledger, in one object."""
     totals: Breakdown = Field(default_factory=lambda: Breakdown(key="all"))
@@ -141,16 +165,29 @@ class ConversionReport(BaseModel):
     by_source: list[Breakdown] = Field(default_factory=list)
     by_company: list[Breakdown] = Field(default_factory=list)
     by_comp_band: list[Breakdown] = Field(default_factory=list)
+    # Pooled ONLY when every application was scored on the same scale.
+    # Empty, with `scale_warning` set, when more than one scorer is in
+    # the data — see FitScale.
     by_fit_band: list[Breakdown] = Field(default_factory=list)
+    fit_scales: list[FitScale] = Field(default_factory=list)
+    scale_warning: str = ""
+
+    by_qualify_model: list[Breakdown] = Field(default_factory=list)
+    by_qualify_prompt: list[Breakdown] = Field(default_factory=list)
+    by_draft_model: list[Breakdown] = Field(default_factory=list)
     by_draft_prompt: list[Breakdown] = Field(default_factory=list)
+
     time_to_first_response: TimeToResponse = Field(
         default_factory=TimeToResponse)
     recurring_gaps: list[tuple[str, int]] = Field(default_factory=list)
     promotion: PromotionReport = Field(
         default_factory=lambda: PromotionReport(status="no_data"))
+    # Things that varied alongside the arms, so a difference between
+    # arms cannot be attributed to the arms.
+    confounds: list[str] = Field(default_factory=list)
     confidence: str = ""
 
 
 __all__ = ["UNASSIGNED", "VariantDimension", "StrategyVariant", "LedgerEntry",
            "ArmStats", "PromotionReport", "Breakdown", "TimeToResponse",
-           "ConversionReport"]
+           "FitScale", "ConversionReport"]
