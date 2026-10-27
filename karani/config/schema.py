@@ -106,6 +106,9 @@ class LlmCfg(BaseModel, frozen=True):
     prep: LlmTask = LlmTask()
     followup: LlmTask = LlmTask()
     agent: LlmTask = LlmTask()
+    # Inbound-mail classification and reply drafts (karani/watcher).
+    # A seven-way label on a short email — Haiku-class work.
+    email: LlmTask = LlmTask()
 
     def for_task(self, task: str) -> LlmTask:
         specific: LlmTask = getattr(self, task, LlmTask())
