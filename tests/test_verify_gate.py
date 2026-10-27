@@ -118,6 +118,7 @@ def _deps(storage, agent) -> HuntDeps:
     return HuntDeps(
         storage=storage,
         make_qualifier=lambda: DraftLLM(),
+        make_pack_client=lambda: DraftLLM(),
         load_resume=lambda: ResumeProfile(raw_markdown="# Kelyn\nPython."),
         slack_factory=StubSlack, channel="D1",
         make_agent_qualifier=lambda: agent,

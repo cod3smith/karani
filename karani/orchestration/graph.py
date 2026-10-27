@@ -89,6 +89,9 @@ class HuntDeps:
     load_resume: Callable[[], Any]
     slack_factory: Callable[[], Any] | None = None
     make_agent_qualifier: Callable[[], Any] | None = None
+    # Pins every pack stage to one model. Production leaves this None
+    # so drafting routes through [llm.<task>]; tests inject a fake.
+    make_pack_client: Callable[[], Any] | None = None
     channel: str = ""
     qualify_limit: int = field(default_factory=lambda: _qualify_limit())
     memory: Any = None
@@ -231,7 +234,11 @@ def build_hunt_graph(deps: HuntDeps):
             stats = await run_autopilot(
                 deps.storage, slack=deps.slack_factory(),
                 channel=deps.channel,
-                make_qualifier=deps.make_qualifier,
+                # NOT deps.make_qualifier: that is the QUALIFY-tier
+                # factory, and passing it pinned the whole pack
+                # (letter, humanize, tailored resume) to Haiku at 4k
+                # tokens. None routes each stage via [llm.<task>].
+                make_qualifier=deps.make_pack_client,
                 load_resume=deps.load_resume,
                 allowed_ids=allowed,
             )

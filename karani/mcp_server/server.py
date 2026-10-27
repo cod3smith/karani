@@ -315,7 +315,7 @@ async def draft(
     if row is None:
         raise ToolError(f"no job with id={job_id}")
     pack = await build_application_pack(
-        client, storage, job_row=row,
+        None, storage, job_row=row,
         resume_markdown=resume.raw_markdown,
         output_path=output_path,
     )

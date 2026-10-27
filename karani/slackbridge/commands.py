@@ -202,7 +202,7 @@ async def _dispatch(cmd, args, storage, memory,
         if not row:
             return f"No job with id={job_id}."
         pack = await build_application_pack(
-            make_qualifier(), storage, job_row=row,
+            None, storage, job_row=row,
             resume_markdown=load_resume().raw_markdown,
         )
         if pack.failed:

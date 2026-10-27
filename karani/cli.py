@@ -132,9 +132,19 @@ async def _draft(job_id: int, provider: str | None, model: str | None,
     from karani.qualification import get_qualifier
 
     resume = ResumeProfile.from_file(resume_path)
-    client = get_qualifier(provider=provider, model=model)
-    print(f"drafting for job_id={job_id} via {type(client).__name__}"
-          f"/{client.model_name}")
+    # None lets each stage route through [llm.<task>] (ADR 0017) —
+    # passing a client pins the whole pack to one model, which is how
+    # cover letters ended up on the qualify tier.
+    override = get_qualifier(provider=provider, model=model) \
+        if (provider or model) else None
+    if override is not None:
+        print(f"drafting job_id={job_id} via {type(override).__name__}"
+              f"/{override.model_name} (explicit override)")
+    else:
+        from karani.config import get_config
+        cfg = get_config().llm.for_task("draft")
+        print(f"drafting job_id={job_id} via {cfg.provider}/{cfg.model} "
+              f"(per-task routing)")
 
     storage = Storage(settings.database_url)
     await storage.connect()
@@ -144,7 +154,7 @@ async def _draft(job_id: int, provider: str | None, model: str | None,
             print(f"ERROR: no job with id={job_id}", file=sys.stderr)
             return 2
         pack = await build_application_pack(
-            client, storage, job_row=row,
+            override, storage, job_row=row,
             resume_markdown=resume.raw_markdown,
             output_path=output_path,
         )

@@ -45,6 +45,12 @@ os.environ["KARANI_MEMORY"] = "basic"
 # Company dossiers probe GitHub/Wikipedia. Drafting now fetches one, so
 # without this the suite does real network I/O (it jumped 25s -> 80s).
 os.environ["KARANI_INTEL"] = "off"
+# The budget guard falls back to the LOCAL provider when a hosted key is
+# absent - which it always is here. Point it at a closed port so a test
+# that reaches a model fails in milliseconds instead of running real
+# inference for minutes (this hung a test run).
+os.environ["LOCAL_LLM_BASE_URL"] = "http://127.0.0.1:1/v1"
+os.environ["LOCAL_LLM_TIMEOUT_SECONDS"] = "2"
 # mem0 defaults point at localhost infra that may genuinely be running on
 # a dev machine — force unreachable endpoints so mem0-mode tests exercise
 # the degradation path instead of touching a real vector store.

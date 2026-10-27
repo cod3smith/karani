@@ -110,6 +110,12 @@ async def test_tool_listing():
 async def test_full_flow_through_tools(storage, monkeypatch, tmp_path):
     job_id = await _seed(storage)
 
+    # build_application_pack routes each stage through [llm.<task>]
+    # now, so the fake has to sit on the factory itself.
+    import karani.qualification as _qual
+    monkeypatch.setattr(_qual, "get_qualifier",
+                        lambda provider=None, model=None, task="qualify":
+                        ScriptedLLM(QUAL_RESPONSE))
     monkeypatch.setattr(srv, "_make_qualifier",
                         lambda p, m: ScriptedLLM(QUAL_RESPONSE))
     qstats = await _call("qualify", {"limit": 10})
@@ -129,6 +135,12 @@ async def test_full_flow_through_tools(storage, monkeypatch, tmp_path):
     md = await _call("digest", {"limit": 5, "format": "md"})
     assert "GitLab" in md
 
+    # build_application_pack routes each stage through [llm.<task>]
+    # now, so the fake has to sit on the factory itself.
+    import karani.qualification as _qual
+    monkeypatch.setattr(_qual, "get_qualifier",
+                        lambda provider=None, model=None, task="qualify":
+                        ScriptedLLM(DRAFT_RESPONSE))
     monkeypatch.setattr(srv, "_make_qualifier",
                         lambda p, m: ScriptedLLM(DRAFT_RESPONSE))
     out = str(tmp_path / "draft.md")
@@ -269,6 +281,12 @@ async def test_prep_and_followup_tools(storage, fake_intel, monkeypatch,
                               "source_basis": "github"}],
         "warm_openers": [], "positioning_reminder": "",
     })
+    # build_application_pack routes each stage through [llm.<task>]
+    # now, so the fake has to sit on the factory itself.
+    import karani.qualification as _qual
+    monkeypatch.setattr(_qual, "get_qualifier",
+                        lambda provider=None, model=None, task="qualify":
+                        ScriptedLLM())
     monkeypatch.setattr(srv, "_make_qualifier",
                         lambda p, m: ScriptedLLM(prep_json))
     prep = await _call("prep", {"job_id": job_id})
@@ -277,6 +295,12 @@ async def test_prep_and_followup_tools(storage, fake_intel, monkeypatch,
 
     fu_json = json.dumps({"note": "Saw the release land.",
                           "subject_line": "s", "hook_used": "release"})
+    # build_application_pack routes each stage through [llm.<task>]
+    # now, so the fake has to sit on the factory itself.
+    import karani.qualification as _qual
+    monkeypatch.setattr(_qual, "get_qualifier",
+                        lambda provider=None, model=None, task="qualify":
+                        ScriptedLLM())
     monkeypatch.setattr(srv, "_make_qualifier",
                         lambda p, m: ScriptedLLM(fu_json))
     fu = await _call("draft_followup", {"job_id": job_id})
@@ -324,6 +348,12 @@ async def test_autopilot_tool(storage, monkeypatch, tmp_path):
 
     import karani.slackbridge as slackbridge
     monkeypatch.setattr(slackbridge, "SlackClient", StubSlack)
+    # build_application_pack routes each stage through [llm.<task>]
+    # now, so the fake has to sit on the factory itself.
+    import karani.qualification as _qual
+    monkeypatch.setattr(_qual, "get_qualifier",
+                        lambda provider=None, model=None, task="qualify":
+                        ScriptedLLM(DRAFT_RESPONSE))
     monkeypatch.setattr(srv, "_make_qualifier",
                         lambda p, m: ScriptedLLM(DRAFT_RESPONSE))
     job_id = await _seed(storage)

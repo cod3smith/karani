@@ -111,6 +111,11 @@ async def _autopilot_pass(
         return stats
 
     resume = load_resume()
+    # An injected factory pins every pack stage to one model, so it is
+    # for explicit overrides and tests only. Production passes None and
+    # lets each stage route through [llm.<task>] (ADR 0017) — wiring the
+    # qualify-tier client in here ran cover letters on Haiku at 4k
+    # tokens and returned malformed JSON.
     client = make_qualifier() if make_qualifier else None
     for row in rows:
         job_id = row["id"]
