@@ -235,6 +235,17 @@ async def test_a_mailbox_outage_is_reported_not_raised():
 
 
 @pytest.mark.asyncio
+async def test_a_mailbox_that_was_never_set_up_degrades():
+    """No GMAIL_* credentials (conftest strips them): a scheduled caller
+    reports it and carries on, exactly like every other optional
+    integration. This also proves the suite reaches no real mailbox."""
+    storage = await _storage_with_application()
+    report = await watch(storage, classifier=ScriptedLLM(), deliver=False)
+    assert report.fetched == 0
+    assert any("GMAIL_CLIENT_ID" in e for e in report.errors)
+
+
+@pytest.mark.asyncio
 async def test_the_thread_carries_the_match_to_the_next_message():
     storage = await _storage_with_application()
     first = _msg("m1", body="Can we meet Tuesday?")

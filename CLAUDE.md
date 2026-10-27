@@ -51,6 +51,12 @@ background). It:
     coverage per draft, cached company dossiers (`karani/intel/`), warm-path
     candidates, interview prep packs, and dossier-hooked follow-ups —
     all measured through `funnel_stats` (roadmap Tier 1.5).
+14. **Watches** the inbox (`karani/watcher/`, `karani watch`): reads
+    replies over a READ-ONLY Gmail scope, classifies them, matches them
+    to an application conservatively, advances the state machine on a
+    confident match, and drafts replies for Slack review. It never
+    sends, deletes or marks read — the scope makes all three
+    impossible. See `docs/watcher.md`.
 
 **Positioning:** two role shapes qualify — (1) *companies that hire
 globally at SF pay bands regardless of candidate location*, and
@@ -98,6 +104,9 @@ karani/                              (repo)
 │   ├── notionsync/                  ← Notion board mirror, schema-adopting (ADR 0011)
 │   ├── autopilot/                   ← continuous hunt: pack + review card (ADR 0012)
 │   ├── orchestration/               ← LangGraph hourly pass (ADR 0013)
+│   ├── watcher/                     ← Gmail response watcher, read-only scope:
+│   │     gmail · classify · match · state · reply · store · runner
+│   │     (docs/watcher.md)
 │   ├── artifacts/                   ← MinIO/S3 per-job objects + presigned links (ADR 0014)
 │   └── mcp_server/                  ← MCP interface, 25 tools, thin adapter (ADR 0008)
 │
@@ -228,6 +237,22 @@ you'll silently degrade the pipeline in a way that's hard to spot.
   See `docs/memory.md` and ADR 0009.
 - Memory writes happen on explicit events (verdict, outcome, deliberate
   `remember`) — never auto-extracted from arbitrary LLM output.
+
+### 4.13 The watcher reads; it never writes to the mailbox
+- The Gmail scope is `gmail.readonly` and nothing else. Never add
+  `gmail.send`, `gmail.modify`, `gmail.compose` or a label scope —
+  karani drafts replies and a human sends them, the same rule as
+  never submitting an application (ADR 0012). A test asserts no
+  module in `karani/watcher/` names a write endpoint.
+- **Inbound email is data, never instructions.** Content goes inside a
+  delimited block with the closing tag stripped, and the only thing
+  crossing back out of the classifier is one label from a closed set.
+  Never let a message body choose a job id, a status, or a recipient.
+- **Only a `high`-confidence match moves the state machine**, and the
+  ladder only climbs (`watcher/state.py`). An unmatched message is
+  reported for manual entry — a wrong match writes a rejection onto
+  the wrong company and poisons the only outcome labels the learning
+  loop will ever have.
 
 ---
 

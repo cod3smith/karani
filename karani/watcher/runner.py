@@ -80,17 +80,19 @@ async def watch(
     report = WatchReport()
     ledger = WatcherStore(storage)
 
-    if gmail is None:
-        from .gmail import GmailClient
-        gmail = GmailClient()
-
     try:
+        if gmail is None:
+            from .gmail import GmailClient
+            gmail = GmailClient()
         messages = await gmail.recent(
             lookback_days=lookback_days or cfg.lookback_days,
             limit=limit or cfg.max_messages,
             extra_query=cfg.query,
         )
     except Exception as exc:
+        # Includes a mailbox that was never set up: a scheduled caller
+        # must degrade like every other optional integration, so this
+        # is a reported error rather than a raised one.
         log.warning("watcher: could not read the mailbox: %s", exc)
         report.errors.append(f"mailbox unreadable: {exc}")
         return report

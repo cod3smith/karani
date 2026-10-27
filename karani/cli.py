@@ -2,6 +2,7 @@
 
 Pipeline: run, qualify, digest, draft, prep, followup, autopilot, refilter
 Review:   actions, funnel, stats, verdict, status, stage, asked, outcome
+Inbox:    watch (read-only Gmail; never sends)
 Context:  remember, recall, reindex, intel, notion, notify
 Setup:    init, config, hunt, unschedule, infra, mcp, slack, hourly
 """
@@ -690,6 +691,62 @@ async def _sweep(days: int) -> int:
     return 0
 
 
+# -----------------------  watch  -----------------------
+
+async def _watch(days: int | None, limit: int | None,
+                 deliver: bool) -> int:
+    """Read the mailbox and reconcile it with the pipeline (read-only)."""
+    _configure_logging()
+    from karani.watcher import watch
+    from karani.watcher.gmail import ENV_CLIENT_ID, configured
+
+    # `watch()` itself degrades (a scheduled caller must not crash on a
+    # mailbox that was never set up), but someone typing the verb asked
+    # for mail and deserves to be told why there is none.
+    if not configured():
+        print(f"Gmail is not set up: {ENV_CLIENT_ID}, GMAIL_CLIENT_SECRET "
+              f"and GMAIL_REFRESH_TOKEN must be in your .env.",
+              file=sys.stderr)
+        print("See docs/watcher.md for the one-time Google Cloud steps, "
+              "then run `karani watch --authorize`.", file=sys.stderr)
+        return 2
+
+    storage = Storage(settings.database_url)
+    await storage.connect()
+    try:
+        report = await watch(storage, lookback_days=days, limit=limit,
+                             deliver=deliver)
+    finally:
+        await storage.close()
+
+    print(f"read={report.fetched} already_seen={report.already_seen} "
+          f"advanced={len(report.advanced)} "
+          f"unplaced={len(report.unmatched)} errors={len(report.errors)}")
+    for processed in report.advanced:
+        print(f"  [{processed.match.job_id}] "
+              f"{processed.classification.label}: "
+              f"{processed.status_before or 'new'} -> {processed.status_after}")
+    for processed in report.unmatched:
+        print(f"  UNPLACED {processed.classification.label}: "
+              f"{processed.message.subject[:70]!r} "
+              f"from {processed.message.from_address}")
+    for err in report.errors:
+        print(f"  ERR: {err}", file=sys.stderr)
+    return 0 if not report.errors else 1
+
+
+def _watch_authorize() -> int:
+    from karani.watcher.gmail import (
+        ENV_REFRESH_TOKEN, GmailAuthError, authorize,
+    )
+    try:
+        token = authorize()
+    except GmailAuthError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print("Authorized, read-only. Add this to your .env:\n")
+    print(f"{ENV_REFRESH_TOKEN}={token}")
+    return 0
 
 
 # -----------------------  setup / serve / schedule  -----------------------
@@ -1013,6 +1070,16 @@ def main() -> None:
     ap.add_argument("--min-fit", type=int, default=None)
     ap.add_argument("--max-drafts", type=int, default=None)
 
+    wt = sub.add_parser("watch", help="read replies in Gmail (read-only) and "
+                                      "advance the application state machine")
+    wt.add_argument("--days", type=int, default=None, help="lookback window")
+    wt.add_argument("--limit", type=int, default=None,
+                    help="max messages to read")
+    wt.add_argument("--no-slack", action="store_true",
+                    help="print the pass instead of pushing it to Slack")
+    wt.add_argument("--authorize", action="store_true",
+                    help="run the one-time read-only OAuth consent flow")
+
     no = sub.add_parser("notion", help="mirror tracked applications to a Notion board")
     no.add_argument("action", choices=["init", "sync"])
     no.add_argument("parent_page_id", nargs="?", default=None,
@@ -1101,6 +1168,11 @@ def main() -> None:
         sys.exit(asyncio.run(_intel(args.company, args.refresh)))
     elif args.cmd == "notify":
         sys.exit(asyncio.run(_notify(args.kind, args.limit)))
+    elif args.cmd == "watch":
+        if args.authorize:
+            sys.exit(_watch_authorize())
+        sys.exit(asyncio.run(_watch(args.days, args.limit,
+                                    not args.no_slack)))
     elif args.cmd == "notion":
         sys.exit(asyncio.run(_notion(args.action, args.parent_page_id)))
     elif args.cmd == "autopilot":
