@@ -85,12 +85,14 @@ async def _qualify(limit: int, concurrency: int, provider: str | None,
     await storage.connect()
     try:
         from karani.memory import MemoryManager
-        stats = await qualify_pending(
-            storage, client, resume,
-            limit=limit, concurrency=concurrency,
-            agent_mode=agent_mode,
-            memory=MemoryManager(storage),
-        )
+        from karani import budget
+        async with budget.track(storage, "cli:qualify"):
+            stats = await qualify_pending(
+                storage, client, resume,
+                limit=limit, concurrency=concurrency,
+                agent_mode=agent_mode,
+                memory=MemoryManager(storage),
+            )
         print(
             f"fetched={stats.fetched} qualified={stats.qualified} "
             f"maybe={stats.maybe} skipped={stats.skipped} "
