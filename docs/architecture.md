@@ -111,15 +111,35 @@ Public surface:
 
 Additional surfaces in `karani/drafting/`: `keywords.py` (deterministic ATS
 keyword-gap scoring — resume gaps feed the draft prompt, final coverage
-persists to `draft_keyword_coverage`), `prep.py` (interview prep pack:
-gap-derived questions + dossier-grounded questions to ask), and
-`followup.py` (dossier-hooked notes for silent applications).
+persists to `draft_keyword_coverage`), `resume_plan.py` (tailoring as
+selection over profile records, with a verified provenance trail), and
+`followup.py` (dossier-hooked notes for silent applications). Interview
+prep moved to `karani/coach/` (ADR 0022).
+
+### `karani/coach/`
+
+Interview prep, fired by the application state machine rather than by
+a verb: `Storage.set_application_status` dispatches to
+`coach.notify_status_change`, which builds a pack on `screen` and
+`interview`. Half the pack never passes through a model — `comp.py`
+derives the money from the posted band, the declared floor/target and
+comparable postings already ingested; `stories.py` mines STAR stories
+from the profile core and the career transcript and verifies every
+citation before it ships. Two LLM calls (`[llm.prep]`), one cached
+candidate prefix shared between them. Output: markdown plus ATS-safe
+.docx/PDF in the job's MinIO prefix, and a Slack card.
+
+Public surface:
+- `build_prep_pack(storage, job_row, resume_markdown, stage=...)` →
+  `PrepResult(pack, path, artifacts, documents)`
+- `notify_status_change(storage, job_id, status)` — the trigger
 
 ### `karani/intel/`
 
 Cached company dossiers: public probes (GitHub org, Wikipedia, public
 org members as warm-path candidates) → `company_intel` table, TTL 14
-days. One fetch, many consumers (prep, follow-up, agent tools). Probes
+days (3 for prep — an interview wants fresher signal). One fetch,
+many consumers (coach, follow-up, agent tools). Probes
 are tolerant — a dead probe degrades the dossier, never raises.
 
 Public surface:
