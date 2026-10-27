@@ -346,39 +346,42 @@ async def draft(
 @app.tool()
 async def prep(
     job_id: int,
+    stage: str = "interview",
     provider: str | None = None,
     model: str | None = None,
     resume_path: str | None = None,
 ) -> dict:
-    """Interview prep pack for a job in the pipeline: company brief from
-    the cached dossier, likely questions derived from the qualifier's gap
-    analysis (with STAR answers from the resume), specific questions to
-    ask grounded in company data, and warm-path openers. Writes
-    drafts/prep_<id>_<company>.md. Billed (one LLM call)."""
-    from karani.drafting import prep_for_job
-    from karani.intel import dossier_text, get_company_intel
+    """Interview prep pack for a job in the pipeline: a refreshed
+    company dossier, likely questions derived from the qualifier's gap
+    analysis, STAR stories mined from the candidate's own records (each
+    traced back to the record it came from), derived comp research for
+    the band, questions to ask grounded in company data, and warm-path
+    openers. Also fires automatically when an application moves to
+    `screen` or `interview`. Writes drafts/prep_<id>_<company>.md and
+    uploads ATS-safe documents. Billed (two LLM calls)."""
+    from karani.coach import build_prep_pack
 
     storage = await _get_storage()
     row = await storage.get_job(job_id)
     if row is None:
         raise ToolError(f"no job with id={job_id}")
-    company = row.get("company_display") or row.get("company") or ""
-    intel = await get_company_intel(storage, company)
-    memory = await _get_memory()
-    bank = [m["content"] for m in await memory.recall(
-        f"{company} interview questions", kind="question", limit=10)]
-    pkg, path = await prep_for_job(
-        _make_qualifier(provider, model),
-        resume=_load_resume(resume_path).raw_markdown,
-        job_row=row, qualification=row.get("qualification"),
-        dossier=dossier_text(intel), question_bank=bank,
+    result = await build_prep_pack(
+        storage, job_row=row,
+        resume_markdown=_load_resume(resume_path).raw_markdown,
+        stage=stage,
+        client=(_make_qualifier(provider, model)
+                if (provider or model) else None),
     )
+    pack = result.pack
     return _jsonable({
-        "path": str(path),
-        "company_brief": pkg.company_brief,
-        "likely_questions": len(pkg.likely_questions),
-        "questions_to_ask": [q.question for q in pkg.questions_to_ask],
-        "warm_openers": len(pkg.warm_openers),
+        "path": str(result.path),
+        "company_brief": pack.company_brief,
+        "likely_questions": len(pack.likely_questions),
+        "questions_to_ask": [q.question for q in pack.questions_to_ask],
+        "stories": [s.title for s in pack.stories],
+        "comp_notes": pack.comp_notes,
+        "warm_openers": len(pack.warm_openers),
+        "artifacts": result.artifacts,
     })
 
 
