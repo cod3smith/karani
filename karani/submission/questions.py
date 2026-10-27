@@ -100,7 +100,9 @@ _COMMON: tuple[Question, ...] = (
 _ATS_EXTRA: dict[str, tuple[Question, ...]] = {
     "lever": (
         _q("github", "GitHub profile", "url"),
-        _q("other_url", "Other website", "url"),
+        # Lever's form also has an "other URL" box. It is left out: the
+        # profile holds one site, and offering the same link twice is
+        # the kind of detail that reads as a mail merge.
         _q("comments", "Additional information", "textarea"),
     ),
     "greenhouse": (

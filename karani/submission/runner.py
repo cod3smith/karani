@@ -115,7 +115,7 @@ async def build_console(
 
     return ConsoleResult(
         path=path, sheets=sheets, introspected=introspected,
-        needs_review=sum(1 for s in sheets if s.needs_review),
+        needs_review=sum(1 for s in sheets if s.legal_review),
     )
 
 

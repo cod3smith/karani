@@ -71,11 +71,13 @@ def test_untrusted_text_is_escaped():
     assert "<b>why</b>" not in html
 
 
-def test_a_sheet_needing_review_is_flagged_not_hidden():
-    html = render_console([_sheet(needs_review=True,
+def test_only_an_unresolved_attestation_earns_the_badge():
+    html = render_console([_sheet(legal_review=True,
                                   legal_note="Confirm the country first.")])
-    assert "review" in html.lower()
+    assert "check work authorization" in html
     assert "Confirm the country first." in html
+    # A merely unanswered field is counted, not badged as a legal risk.
+    assert "check work authorization" not in render_console([_sheet()])
 
 
 def test_a_fallback_question_set_says_so():

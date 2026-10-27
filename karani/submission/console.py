@@ -250,8 +250,9 @@ def _card(sheet: AnswerSheet) -> str:
            '<div class="head">',
            f'<h2>{_esc(sheet.title)}</h2>',
            f'<span class="co">{_esc(sheet.company)}</span>']
-    if sheet.needs_review:
-        out.append('<span class="badge review">needs review</span>')
+    if sheet.legal_review:
+        out.append('<span class="badge review">check work '
+                   'authorization</span>')
     if not sheet.introspected:
         out.append('<span class="badge fallback">standard fields</span>')
     out.append("</div>")
@@ -262,9 +263,11 @@ def _card(sheet: AnswerSheet) -> str:
                    f'target="_blank" rel="noopener noreferrer">'
                    f'open the form</a>')
     counted = sum(1 for a in sheet.answers if a.source != "voluntary")
+    short = sheet.outstanding
     out.append(f'<span>{counted} fields - {sheet.answered} answered'
-               + (f", {sheet.outstanding} need you" if sheet.outstanding
-                  else "") + f' - job {sheet.job_id}</span>')
+               + (f", {short} need{'s' if short == 1 else ''} you"
+                  if short else "")
+               + f' - job {sheet.job_id}</span>')
     out.append("</div>")
 
     if sheet.documents:

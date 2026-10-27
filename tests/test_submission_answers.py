@@ -94,6 +94,7 @@ def test_an_unclear_geography_flags_the_sheet_for_review():
     job = dict(GLOBAL_REMOTE_JOB, location_raw="",
                prefilter={"fully_remote": "no", "global_hire_eligible": None})
     sheet = _sheet(standard_questions("greenhouse").questions, job=job)
+    assert sheet.legal_review is True
     assert sheet.needs_review is True
     assert "confirm" in sheet.legal_note.lower()
     assert _by_key(sheet)["work_authorization"].needs_input is True
@@ -154,7 +155,10 @@ def test_an_unmatched_free_text_question_asks_for_input():
     answer = _by_key(sheet)["question_7"]
     assert answer.value == ""
     assert answer.needs_input is True
+    # An unanswered required field blocks sending, but it is not the
+    # legal flag - that one means karani could not answer honestly.
     assert sheet.needs_review is True
+    assert sheet.legal_review is False
 
 
 def test_drafted_prose_the_form_has_no_field_for_still_reaches_the_sheet():

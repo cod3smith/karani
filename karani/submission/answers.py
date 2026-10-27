@@ -48,9 +48,17 @@ class AnswerSheet(BaseModel, frozen=True):
     question_note: str = ""
     legal_note: str = ""
     viable: bool = True
-    needs_review: bool = False
+    # The work-authorization answer could not be resolved honestly -
+    # a different thing from an unanswered question, and the only one
+    # that must be settled before the form is sent.
+    legal_review: bool = False
     answers: tuple[Answer, ...] = ()
     documents: dict[str, str] = {}
+
+    @property
+    def needs_review(self) -> bool:
+        return self.legal_review or any(
+            a.required and a.needs_input for a in self.answers)
 
     @property
     def outstanding(self) -> int:
@@ -301,9 +309,6 @@ def build_answer_sheet(
 
     answers += _unplaced_pack_answers(pack, used, answers)
 
-    needs_review = bool(auth.needs_review) or any(
-        a.required and a.needs_input for a in answers)
-
     return AnswerSheet(
         job_id=int(job_row.get("id") or 0),
         company=job_row.get("company_display") or job_row.get("company") or "",
@@ -311,7 +316,7 @@ def build_answer_sheet(
         apply_url=job_row.get("apply_url") or "",
         ats=questions.ats, introspected=questions.introspected,
         question_note=questions.note, legal_note=auth.note,
-        viable=bool(auth.viable), needs_review=needs_review,
+        viable=bool(auth.viable), legal_review=bool(auth.needs_review),
         answers=tuple(answers), documents=documents,
     )
 

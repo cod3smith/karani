@@ -312,8 +312,8 @@ async def _console(limit: int, output: str | None, refresh: bool) -> int:
                   f"/{count}")
             print(f"  fields still needing you: {result.outstanding}")
             if result.needs_review:
-                print(f"  {result.needs_review} need a look before sending "
-                      f"(work authorization unclear)")
+                print(f"  {result.needs_review} need a work-authorization "
+                      f"decision before sending")
             print(f"  open it:  open {result.path}")
             print("  karani never submits. Send each one yourself, mark it "
                   "in the console, then run the `karani submitted` command "
