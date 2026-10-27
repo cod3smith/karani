@@ -311,13 +311,14 @@ async def draft(
     resume = _load_resume(resume_path)
     # None routes each stage through [llm.<task>] (ADR 0017); an
     # explicit override pins every stage to one model.
-    client = _make_qualifier(provider, model) if (provider or model) else None
+    client_override = (_make_qualifier(provider, model)
+                       if (provider or model) else None)
     storage = await _get_storage()
     row = await storage.get_job(job_id)
     if row is None:
         raise ToolError(f"no job with id={job_id}")
     pack = await build_application_pack(
-        client, storage, job_row=row,
+        client_override, storage, job_row=row,
         resume_markdown=resume.raw_markdown,
         output_path=output_path,
     )

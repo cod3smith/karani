@@ -161,6 +161,13 @@ class BudgetCfg(BaseModel, frozen=True):
     warn_at: float = 0.8          # fraction of the cap that warns
 
 
+class CoachCfg(BaseModel, frozen=True):
+    """Interview prep on a state transition (career-runner Phase 4).
+    Billed and unattended, so it needs a switch within reach —
+    `KARANI_AUTO_PREP=off` overrides this at the shell."""
+    auto_prep: bool = True
+
+
 class HuntCfg(BaseModel, frozen=True):
     qualify_limit: int = 50
     min_comp_usd: int | None = None
@@ -183,6 +190,7 @@ class KaraniConfig(BaseModel, frozen=True):
     budget: BudgetCfg = BudgetCfg()
     legal: LegalCfg = LegalCfg()
     profile_sources: ProfileSourcesCfg = ProfileSourcesCfg()
+    coach: CoachCfg = CoachCfg()
 
     @model_validator(mode="after")
     def _check_version(self) -> "KaraniConfig":
