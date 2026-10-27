@@ -106,11 +106,15 @@ class PromotionReport(BaseModel):
 
 
 class Breakdown(BaseModel):
-    """Conversion for one slice of the ledger (a source, a company, ...)."""
+    """Conversion for one slice of the ledger (a source, a company, ...).
+
+    `offers` is reported because it is asked for, not because it is
+    optimizable — see the design doc, section 4. The rate the loop
+    actually steers is `response_rate`.
+    """
     key: str
     applied: int = 0
     responded: int = 0
-    interviewed: int = 0
     offers: int = 0
     response_rate: float = 0.0
     ci_low: float = 0.0
@@ -118,5 +122,35 @@ class Breakdown(BaseModel):
     median_days_to_response: float | None = None
 
 
+class TimeToResponse(BaseModel):
+    """How long a reply takes when one comes, and how much is still open."""
+    n: int = 0
+    awaiting: int = 0
+    median_days: float | None = None
+    p75_days: float | None = None
+    fastest_days: float | None = None
+    slowest_days: float | None = None
+    note: str = ""
+
+
+class ConversionReport(BaseModel):
+    """The whole measurement surface over the ledger, in one object."""
+    totals: Breakdown = Field(default_factory=lambda: Breakdown(key="all"))
+    by_variant: list[Breakdown] = Field(default_factory=list)
+    by_positioning_angle: list[Breakdown] = Field(default_factory=list)
+    by_source: list[Breakdown] = Field(default_factory=list)
+    by_company: list[Breakdown] = Field(default_factory=list)
+    by_comp_band: list[Breakdown] = Field(default_factory=list)
+    by_fit_band: list[Breakdown] = Field(default_factory=list)
+    by_draft_prompt: list[Breakdown] = Field(default_factory=list)
+    time_to_first_response: TimeToResponse = Field(
+        default_factory=TimeToResponse)
+    recurring_gaps: list[tuple[str, int]] = Field(default_factory=list)
+    promotion: PromotionReport = Field(
+        default_factory=lambda: PromotionReport(status="no_data"))
+    confidence: str = ""
+
+
 __all__ = ["UNASSIGNED", "VariantDimension", "StrategyVariant", "LedgerEntry",
-           "ArmStats", "PromotionReport", "Breakdown"]
+           "ArmStats", "PromotionReport", "Breakdown", "TimeToResponse",
+           "ConversionReport"]
