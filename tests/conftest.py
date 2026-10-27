@@ -45,6 +45,10 @@ os.environ["KARANI_MEMORY"] = "basic"
 # Company dossiers probe GitHub/Wikipedia. Drafting now fetches one, so
 # without this the suite does real network I/O (it jumped 25s -> 80s).
 os.environ["KARANI_INTEL"] = "off"
+# Same rule for ATS question introspection: it GETs the Greenhouse board
+# API. Tests that exercise the fetch turn it on and supply an
+# httpx.MockTransport client.
+os.environ["KARANI_ATS_QUESTIONS"] = "off"
 # The budget guard falls back to the LOCAL provider when a hosted key is
 # absent - which it always is here. Point it at a closed port so a test
 # that reaches a model fails in milliseconds instead of running real
@@ -73,6 +77,7 @@ def _no_external_creds(monkeypatch):
     for var in _STRIPPED_VARS:
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("KARANI_MEMORY", "basic")
+    monkeypatch.setenv("KARANI_ATS_QUESTIONS", "off")
 
 
 @pytest.fixture
