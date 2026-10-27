@@ -466,7 +466,7 @@ that supersedes it. Never delete.
 4. Write a smoke test that scripts a `chat_turn` returning a `tool_calls`
    block invoking your tool.
 
-### Clear the submission queue (ADR 0022)
+### Clear the submission queue (ADR 0023)
 1. `karani console` — builds `data/submission_console.html` from every
    pack in `drafting`/`ready`. Free: no LLM call. One GET per
    Greenhouse job the first time, cached in `jobs.ats_questions` after.
