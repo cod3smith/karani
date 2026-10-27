@@ -152,6 +152,31 @@ async def test_a_scheduled_date_in_the_stage_log_reaches_the_card(
     assert "2026-11-12" in rendered
 
 
+def test_the_stages_log_is_read_whether_it_is_json_or_a_string():
+    """asyncpg hands JSONB back as str (no codec is registered) while
+    the in-memory store hands back a list. Both are normal, and the
+    idempotency key must not depend on which one it got."""
+    from karani.coach.trigger import _already_prepped, scheduled_from_stages
+
+    stages = [{"stage": "screen", "notes": "scheduled 2026-11-12"},
+              {"stage": "prep:screen", "notes": "drafts/prep.md"}]
+    for row in ({"stages": stages}, {"stages": json.dumps(stages)}):
+        assert _already_prepped(row, "screen") is True
+        assert _already_prepped(row, "interview") is False
+        when = scheduled_from_stages(row)
+        assert when is not None and when.date().isoformat() == "2026-11-12"
+
+
+def test_a_prep_marker_is_not_mistaken_for_a_schedule():
+    """The marker carries a path, and a path can contain digits. Only
+    the stage notes someone else wrote are read for a date."""
+    from karani.coach.trigger import scheduled_from_stages
+
+    row = {"stages": [{"stage": "prep:screen",
+                       "notes": "drafts/2026-01-01_prep.md"}]}
+    assert scheduled_from_stages(row) is None
+
+
 @pytest.mark.asyncio
 async def test_a_failing_prep_never_breaks_the_status_write(tmp_path,
                                                             monkeypatch):
