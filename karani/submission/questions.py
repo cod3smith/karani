@@ -267,7 +267,8 @@ def _as_dict(value: Any) -> dict:
     return {}
 
 
-def _enabled() -> bool:
+def introspection_enabled() -> bool:
+    """KARANI_ATS_QUESTIONS=off means the console never touches the wire."""
     return os.getenv("KARANI_ATS_QUESTIONS", "on").lower() not in (
         "off", "0", "false")
 
@@ -295,7 +296,7 @@ async def introspect_questions(job_row: dict, client=None, *,
     if from_raw is not None:
         return from_raw
 
-    if ats == "greenhouse" and client is not None and _enabled():
+    if ats == "greenhouse" and client is not None and introspection_enabled():
         fetched = await _fetch_greenhouse(job_row, client)
         if fetched is not None:
             return fetched
@@ -323,5 +324,6 @@ async def _fetch_greenhouse(job_row: dict, client) -> QuestionSet | None:
 
 
 __all__ = ["Choice", "Question", "QuestionSet", "GREENHOUSE_JOB_URL",
+           "introspection_enabled",
            "introspect_questions", "questions_from_payload",
            "standard_questions"]
