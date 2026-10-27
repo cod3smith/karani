@@ -134,7 +134,8 @@ def render_markdown(pack: PrepPack, job_row: dict, profile) -> str:
         lines += ["## Positioning reminder", "", pack.positioning_reminder, ""]
 
     if pack.story_trace:
-        lines += ["---", "", story_trace_report(pack.story_trace)]
+        lines += [story_trace_report(pack.story_trace,
+                                     heading="## STAR provenance")]
 
     return "\n".join(lines).rstrip() + "\n"
 

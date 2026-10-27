@@ -142,19 +142,24 @@ def render_stories(stories: list[StarStory], profile: Profile) -> str:
     return "\n".join(out).strip()
 
 
-def story_trace_report(trace: list[dict]) -> str:
-    lines = ["# STAR provenance", "",
+def story_trace_report(trace: list[dict],
+                       heading: str = "# STAR provenance") -> str:
+    """The audit trail. `heading` lets the pack embed it as a section
+    rather than a second top-level title (which a .docx renders as a
+    second document heading)."""
+    lines = [heading, "",
              "Every story and the record it was mined from. Dropped "
              "entries are stories the model could not source.", ""]
     for entry in trace:
+        ids = ", ".join(entry.get("source_ids") or ())
         lines.append(f"- {entry.get('title', '?')}: {entry.get('status')}"
-                     + (f" · ids {entry['source_ids']}"
-                        if entry.get("source_ids") else ""))
+                     + (f" · from {ids}" if ids else ""))
         if entry.get("dropped_ids"):
-            lines.append(f"    unknown ids dropped: {entry['dropped_ids']}")
+            lines.append("    unknown ids dropped: "
+                         + ", ".join(entry["dropped_ids"]))
         if entry.get("dropped_quote"):
             lines.append("    quote not found in the transcript: "
-                         f"{entry['dropped_quote'][:120]!r}")
+                         f"\"{entry['dropped_quote'][:120]}\"")
     return "\n".join(lines) + "\n"
 
 
