@@ -153,11 +153,15 @@ async def _draft(job_id: int, provider: str | None, model: str | None,
         if not row:
             print(f"ERROR: no job with id={job_id}", file=sys.stderr)
             return 2
-        pack = await build_application_pack(
-            override, storage, job_row=row,
-            resume_markdown=resume.raw_markdown,
-            output_path=output_path,
-        )
+        from karani import budget
+        # One-off commands bill real money too; without this the guard
+        # only ever saw scheduler passes (ADR 0019).
+        async with budget.track(storage, "cli:draft"):
+            pack = await build_application_pack(
+                override, storage, job_row=row,
+                resume_markdown=resume.raw_markdown,
+                output_path=output_path,
+            )
         if pack.failed:
             print("ERROR: draft failed (malformed LLM output); retry",
                   file=sys.stderr)

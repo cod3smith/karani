@@ -215,3 +215,36 @@ base_url = "https://api.groq.com/openai/v1"
         assert "localhost" in client._base_url or "127.0.0.1" in client._base_url
     finally:
         reload_config()
+
+
+# --- one-off runs must be accounted too ---
+
+@pytest.mark.asyncio
+async def test_track_records_a_ledger_row_for_one_off_runs():
+    """ADR 0019 noted the hole: only scheduler passes wrote to the
+    ledger, so `karani draft` on Opus - the most expensive single call
+    in the system - was invisible to the guard."""
+    from karani.ingestion.storage import Storage
+    storage = Storage("")
+    await storage.connect()
+
+    async with budget.track(storage, "cli:draft"):
+        usage.record({"model": "claude-opus-5-5",
+                      "prompt_tokens": 10_000, "completion_tokens": 5_000})
+
+    spent = await storage.spend_this_month()
+    assert spent == pytest.approx(0.14, rel=0.01)   # 10k in + 5k out
+
+
+@pytest.mark.asyncio
+async def test_track_never_sinks_the_command_it_wraps():
+    from karani.ingestion.storage import Storage
+
+    class BrokenStorage(Storage):
+        async def record_run(self, *a, **kw):
+            raise RuntimeError("ledger down")
+
+    storage = BrokenStorage("")
+    await storage.connect()
+    async with budget.track(storage, "cli:draft"):   # must not raise
+        usage.record({"model": "claude-opus-5-5", "prompt_tokens": 1})

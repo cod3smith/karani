@@ -24,6 +24,7 @@ audit — which is the safe direction for a guard.
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 log = logging.getLogger(__name__)
@@ -130,6 +131,32 @@ async def refresh(storage) -> float:
 def month_start(now: datetime | None = None) -> datetime:
     now = now or datetime.now(timezone.utc)
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+@asynccontextmanager
+async def track(storage, kind: str):
+    """Record what a one-off command spends.
+
+    Only scheduler passes wrote ledger rows, so `karani draft` on Opus
+    - the priciest single call karani makes - never reached the guard
+    and month-to-date read low. Bookkeeping never sinks the command it
+    wraps, same rule as the run ledger itself.
+    """
+    from karani.qualification import usage
+    started = datetime.now(timezone.utc)
+    before = usage.snapshot()
+    try:
+        yield
+    finally:
+        try:
+            delta = usage.delta(before, usage.snapshot())
+            if delta.get("calls"):
+                await storage.record_run(
+                    kind, started_at=started,
+                    finished_at=datetime.now(timezone.utc),
+                    state={"source": kind}, tokens=delta, errors=0)
+        except Exception:
+            log.exception("spend tracking failed for %s", kind)
 
 
 def reset() -> None:
