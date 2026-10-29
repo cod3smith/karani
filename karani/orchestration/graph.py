@@ -16,6 +16,7 @@ Design rules (ADR 0013):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -40,6 +41,41 @@ class HuntState(TypedDict, total=False):
     run_recorded: bool
     verified: dict[int, bool]
     errors: Annotated[list[str], _merge_errors]
+
+
+# A pass must finish inside its own hour or the scheduler silently
+# skips the next tick: launchd will not start a second instance while
+# the first is alive (ADR 0025). 50 minutes leaves the hour free.
+DEFAULT_PASS_DEADLINE_SECONDS = 3000
+
+
+def pass_deadline_seconds() -> float:
+    """Ceiling on one pass. Env > built-in; always under an hour."""
+    raw = os.getenv("KARANI_PASS_DEADLINE_SECONDS")
+    try:
+        value = float(raw) if raw else DEFAULT_PASS_DEADLINE_SECONDS
+    except ValueError:
+        value = DEFAULT_PASS_DEADLINE_SECONDS
+    return min(value, 3540.0)
+
+
+async def run_with_deadline(coro, seconds: float | None = None):
+    """Run a pass under a hard ceiling.
+
+    karani was silent for 40 hours with the job "running": one pass
+    blocked on a localhost request that never returned, and nothing
+    bounded it. Which call hangs matters less than the fact that any
+    of them can, so the ceiling sits here rather than on each client.
+    Raises TimeoutError; the caller reports it as a failed pass.
+    """
+    limit = pass_deadline_seconds() if seconds is None else seconds
+    try:
+        return await asyncio.wait_for(coro, timeout=limit)
+    except (asyncio.TimeoutError, TimeoutError) as exc:
+        log.error("hunt pass abandoned after %.0fs — a call never "
+                  "returned; the next tick will start a clean pass", limit)
+        raise TimeoutError(
+            f"hunt pass exceeded its {limit:.0f}s deadline") from exc
 
 
 def pass_marker_path():

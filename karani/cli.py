@@ -1046,18 +1046,29 @@ def _infra(action: str, profile: str | None) -> int:
 
 
 def _hourly(loop: int | None) -> int:
-    from karani.orchestration.graph import run_hunt_once
+    from karani.orchestration import graph
+    from karani.orchestration.graph import run_with_deadline
 
     async def _loop() -> None:
         while True:
-            state = await run_hunt_once()
-            print(f"hunt pass done: errors={len(state.get('errors', []))}")
+            try:
+                state = await run_with_deadline(graph.run_hunt_once())
+                print(f"hunt pass done: "
+                      f"errors={len(state.get('errors', []))}")
+            except TimeoutError as exc:
+                print(f"ERR: {exc}", file=sys.stderr)
             await asyncio.sleep(loop)
 
     if loop:
         asyncio.run(_loop())
         return 0
-    state = asyncio.run(run_hunt_once())
+    try:
+        state = asyncio.run(run_with_deadline(graph.run_hunt_once()))
+    except TimeoutError as exc:
+        # Non-zero so the launchd record shows the lost hour instead of
+        # a silent success (ADR 0025).
+        print(f"ERR: {exc}", file=sys.stderr)
+        return 1
     errors = state.get("errors", [])
     for section in ("ingest", "qualify", "autopilot", "notion"):
         print(f"{section}={state.get(section)}")
