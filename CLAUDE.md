@@ -152,9 +152,9 @@ karani/                              (repo)
 ├── docker-compose.yml               ← dev infra (pgvector db :5433, minio :9010, ollama)
 ├── data/                            ← resume.md (yours, gitignored) + .example
 ├── drafts/                          ← generated packs (gitignored)
-├── tests/                           ← 381 deterministic + 12 Postgres-marked (`make test-pg`)
+├── tests/                           ← 577 deterministic + 22 Postgres-marked (`make test-pg`)
 └── docs/                            ← vision · architecture · roadmap · memory ·
-      conventions · operations · adrs/ (0001-0024) ·
+      conventions · operations · adrs/ (0001-0025) ·
       superpowers/specs/ (design docs)
 ```
 
@@ -375,7 +375,7 @@ Full details in `docs/conventions.md`. The one-liners:
   suite + ruff + a wheel smoke on 3.11/3.12/3.13, with coverage to
   Coveralls (`.github/workflows/ci.yml`).
 - Every new module needs a smoke test at minimum.
-- All 381 existing tests are deterministic (no network, no clock). Keep it
+- All 577 default-run tests are deterministic (no network, no clock). Keep it
   that way — use fake clients for LLM calls (see `tests/test_qualification.py`
   and `tests/test_agent.py`), and `httpx.MockTransport` for HTTP (see
   `tests/test_e2e_pipeline.py`).
@@ -393,8 +393,11 @@ Full details in `docs/conventions.md`. The one-liners:
   test. Best-effort integrations read env at call time — without the
   strip, the developer's real .env makes "deterministic" tests write to
   live services (this happened: 30 fixture pages on the real Notion
-  board). A suite that suddenly runs slower than ~2s is doing network
-  I/O — treat that as a failure even when everything passes.
+  board). The 572 in-process tests run in about 6 seconds; five
+  subprocess tests (both in `test_run_ledger.py`, the watchdog marker, the
+  artifacts pipeline and the PDF render) add roughly 34 more, so a full
+  default run is about 40 seconds. When that 6 seconds climbs, something is
+  doing network I/O — treat it as a failure even when everything passes.
 - `pytest-asyncio` is auto-mode (see `pyproject.toml`). Just decorate coroutines
   with `@pytest.mark.asyncio`.
 - The in-memory `Storage` fallback (`Storage("")`) is the standard test

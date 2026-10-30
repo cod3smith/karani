@@ -8,18 +8,32 @@
 [![Python](https://img.shields.io/pypi/pyversions/karani)](https://pypi.org/project/karani/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A semi-autonomous, self-hosted job-hunt pipeline. It ingests postings
-from nine sources every hour, qualifies them against *your* resume with
-an LLM, drafts a complete application pack (tailored resume + cover
-letter, de-AI'd by a measured humanizer), and delivers it to Slack as a
-review card with Approve / Skip / Applied buttons. You press submit —
-karani never does (see `docs/vision.md` non-goals).
+**Job hunting is a data pipeline problem. karani treats it like one.**
 
-Everything is optional and degrades gracefully: it runs end-to-end with
-zero external services, and upgrades piecewise with Postgres, Slack,
-Notion, MinIO, mem0 + pgvector semantic memory, local Ollama models, and
-LangGraph orchestration. Every intelligence feature reports to a
-conversion-funnel metric so improvements are measured, not vibed.
+It watches nine job boards for the roles you actually want, reads every
+posting against your resume, writes the application — and hands you the
+pen. You press submit. karani never does.
+
+![The submission console: every pack waiting to be sent, each job's real application questions, answers tagged with where they came from, and a copy button on every field.](docs/assets/submission-console.png)
+
+Point it at your resume and your criteria, and each hourly pass will:
+
+- **Pull** postings from Greenhouse, Lever, Ashby and Workable, plus five
+  global remote feeds.
+- **Drop about 95% of them on deterministic rules** before any model call,
+  so the LLM bill stays small and predictable.
+- **Score** the survivors against your resume using the model you choose —
+  hosted, or a local Ollama model at zero token cost.
+- **Draft** a tailored resume and cover letter, and answer the job's *real*
+  application questions, read live from the ATS's public API.
+- **Track** every application to offer or rejection, and measure which of
+  your positioning angles actually converts.
+
+Everything is optional and degrades gracefully. It runs end to end with no
+external services at all, and upgrades piecewise with Postgres, Slack,
+Notion, MinIO, mem0 + pgvector semantic memory, local models and LangGraph
+orchestration. Every intelligence feature reports into a conversion-funnel
+metric, so improvements are measured rather than assumed.
 
 > **Why "karani"?** *Karani* (kah-RAH-nee) is Swahili for **clerk** —
 > the diligent office worker who files the paperwork, keeps the
@@ -27,6 +41,36 @@ conversion-funnel metric so improvements are measured, not vibed.
 > does exactly that for your job hunt: reads every posting, files every
 > application pack, tracks every outcome — and hands the pen back to
 > you for the signature.
+
+<details>
+<summary><b>Contents</b></summary>
+
+- [Install](#install)
+- [Documentation](#documentation)
+- [What leaves your machine](#what-leaves-your-machine)
+- [Positioning](#positioning)
+- [Sources](#sources)
+- [Layout](#layout)
+- [Pipeline stages](#pipeline-stages)
+- [Configure](#configure)
+- [MCP server](#mcp-server)
+- [The continuous hunt](#the-continuous-hunt-autopilot)
+- [Slack](#slack-two-way)
+- [Submission console](#submission-console)
+- [Conversion intelligence](#conversion-intelligence)
+- [Notion board](#notion-board)
+- [Inbox watcher](#inbox-watcher-read-only-gmail)
+- [Scheduling](#scheduling)
+- [Memory](#memory)
+- [Infrastructure](#infrastructure)
+- [LLM providers](#llm-providers)
+- [What's downstream](#whats-downstream)
+- [Feedback loop](#feedback-loop)
+- [Adding a source](#adding-a-source)
+- [Changing the rules](#changing-the-rules)
+- [Gotchas](#gotchas)
+
+</details>
 
 ## Install
 
@@ -74,14 +118,35 @@ gate that fails if anything from `data/resume.md` or any real posting
 reaches a built page. Every example on the site is a fabricated candidate
 applying to fabricated companies.
 
-## Positioning (the shipped defaults — yours lives in karani.toml)
+## What leaves your machine
+
+Short answer: as little as you configure. karani is self-hosted, and every
+integration is opt-in.
+
+| Destination | What goes there | How to turn it off |
+|---|---|---|
+| Job boards | Nothing about you. Public endpoints, read only. | Required for ingestion. |
+| LLM provider | The job posting, your resume, your positioning, and past verdicts used as few-shot examples. | Set `provider = "local"` and nothing leaves the machine. |
+| Slack, Notion, MinIO | Shortlists, packs and application state, if you configure them. | Leave the tokens unset. |
+| Gmail | Nothing outbound. The watcher holds a **read-only** scope and cannot send, delete or mark messages read. | Don't run `karani watch`. |
+
+Your resume, the database and every generated pack stay on disk. API keys
+live in `.env`, never in `karani.toml`, and `data/` and `drafts/` are
+gitignored so a fork of this repo never carries your details. karani does
+not submit applications, and no model is ever asked to invent a fact about
+your work authorization — those answers are derived from facts you declare
+and sign (see [ADR 0023](docs/adrs/0023-submission-console-and-write-back.md)).
+
+## Positioning
+
+*These are the shipped defaults. Yours live in `karani.toml`.*
 
 Two role shapes qualify out of the box:
 
 1. **Companies that hire globally at SF pay bands, regardless of candidate location.**
 2. **Roles that sponsor a visa + relocation** — EU and Japan preferred destinations; local top-of-market comp acceptable there.
 
-Target roles: software engineering, research engineering, ML/AI. Computational-bio / bioinformatics roles are excluded by title.
+Target roles: software engineering, research engineering, ML/AI — including computational-biology research engineering, where the work is building systems and models rather than wet-lab science ([ADR 0021](docs/adrs/0021-computational-bio-is-in-scope.md)). Built-in title exclusions are liftable per profile with `[profile] allow_titles`; wet-lab titles stay excluded.
 
 - Hard gates: senior/staff engineering role, remote (not hybrid) *unless relocation is sponsored*, region-locked jobs vetoed *unless relocation is sponsored*, comp ≥ $160k where disclosed.
 - Nice-to-have: explicit pay parity language, relocation support, retreat/travel budget, must-have skill overlap.
