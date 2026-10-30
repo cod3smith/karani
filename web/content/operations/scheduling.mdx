@@ -1,0 +1,145 @@
+---
+title: "Scheduling"
+description: "One command installs the hourly hunt, the twice-daily summaries and an out-of-process watchdog. And the one trap: do not schedule it from a project virtualenv."
+---
+
+import { samples } from '../../lib/samples.generated'
+
+# Scheduling
+
+<Lede>
+One command, and then the thing that will actually bite you — which is not
+the cron syntax, it is which binary the scheduler runs.
+</Lede>
+
+```bash
+karani hunt         # install and load the agents (macOS launchd)
+karani unschedule   # remove them
+```
+
+## What gets installed
+
+| Agent | Interval | What it does |
+|---|---|---|
+| `com.karani.hourly` | 1h | One hunt pass; timestamps a marker file |
+| `com.karani.daily` | 06:00, 13:00 | Digest and worklist to Slack, in-process heartbeat |
+| `com.karani.watchdog` | 1h | `sh` and `curl`; alerts if the marker is stale |
+| `com.karani.ollama-env` | at login | Re-pins the Ollama environment, when qualify runs local |
+
+## The hourly pass
+
+```bash
+karani hourly     # run one by hand
+```
+
+<RunReport note="karani hourly">{samples.transcripts.hourly}</RunReport>
+
+Ingest every source, qualify the arrivals, draft packs for new top-fit
+roles, deliver review cards. A graph with per-node retry and a Slack alert
+on failure ([ADR
+0013](/decisions/0013-langgraph-background-orchestration/)).
+
+Quiet by design: an hour with nothing new posts nothing. Summary pushes
+stay twice daily so the channel is not a feed.
+
+Spending is triple-bounded — a fit floor, a per-run draft cap, and one
+shared daily budget across all 24 runs — on top of the monthly cap that
+every billed task obeys.
+
+<Note kind="warning" title="Do not schedule it from a project virtualenv">
+
+A routine `find ~ -name .venv | xargs rm -rf` deleted karani's venv once
+and the scheduler ran at exit 127 for **eight days** while every other
+indicator looked fine ([ADR
+0018](/decisions/0018-out-of-process-liveness/)). Install it as a tool:
+
+```bash
+uv tool install --editable ".[slack,orchestrator,artifacts,memory,anthropic]"
+karani hunt
+```
+
+An editable tool install tracks source edits. A **dependency** change needs
+`uv tool install --force --editable ...` again.
+
+</Note>
+
+## Every path in a launchd job must be absolute
+
+launchd has no working directory. A relative path in a plist fails to spawn
+with exit 78, which looks nothing like "your path was relative". `karani
+hunt` renders absolute paths into the agents it writes, and the thing to
+remember is only this: if you hand-edit a plist, do not use a relative
+path.
+
+## Every pass has a deadline
+
+A hunt pass runs under a hard ceiling — 3000 seconds by default, clamped
+below the hourly tick.
+
+This is not a performance guard, it is an availability one. karani once
+went silent for **40 hours** while `launchctl list` showed the job present
+and exit code 0. The scheduler was not dead, it was *running*: one pass had
+blocked on a request to a local model server that restarted mid-request,
+the socket stayed open, the caller had no timeout, and launchd will not
+start a second instance of a job while the first is alive. One wedged call
+silenced the whole pipeline ([ADR
+0025](/decisions/0025-every-pass-has-a-deadline/)).
+
+So a pass that exceeds the deadline is abandoned, logged, and reported as a
+failed run with a non-zero exit — so the launchd record shows the lost hour
+rather than a silent success. The next tick starts clean.
+
+The ceiling is at the pass boundary and not on each client on purpose.
+Which call hangs is unpredictable; a per-client timeout only protects the
+client somebody remembered to configure.
+
+```
+KARANI_PASS_DEADLINE_SECONDS=3000
+```
+
+<Note kind="caution" title="A pass has to fit inside the hour">
+
+On a local model a row takes 75 to 170 seconds, so `[hunt] qualify_limit`
+is the knob that matters: 15 rows is about half an hour. Raising it until a
+pass genuinely needs more than 50 minutes means raising the deadline too —
+and a 60-minute ceiling on an hourly job still lets a wedged pass eat its
+successor's slot, which is the failure the clamp exists to prevent.
+
+</Note>
+
+## Linux
+
+`karani hunt` writes launchd agents, so on Linux wire the same commands
+into systemd timers or cron yourself:
+
+```
+# Hourly: one hunt pass.
+0 * * * *  /path/to/karani hourly >> /path/to/logs/hourly.log 2>&1
+
+# Twice daily: summaries.
+0 6,13 * * *  /path/to/karani notify --kind digest >> /path/to/logs/daily.log 2>&1
+0 6,13 * * *  /path/to/karani notify --kind actions >> /path/to/logs/daily.log 2>&1
+
+# Weekly: widen the staleness sweep.
+0 4 * * 0  /path/to/karani sweep --days 14 >> /path/to/logs/sweep.log 2>&1
+```
+
+Use an absolute path to the binary, for the same reason launchd needs one.
+
+## The watcher is not scheduled
+
+`karani watch` is deliberately a verb and not an agent. Wire it into the
+chain once you trust what it reports — and read a few passes with
+`--no-slack` first, because the thing worth checking is what it *refuses*
+to match.
+
+## Logs
+
+`logs/` in repo mode, `~/.karani/logs/` installed. The hourly pass
+timestamps `logs/.last-pass` on completion, which is the only file the
+watchdog reads.
+
+## Next
+
+[Monitoring and liveness](/operations/monitoring/) — how to tell it is
+still alive, and why the watchdog is `sh` and `curl` and nothing else.

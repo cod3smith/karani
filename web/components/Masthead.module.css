@@ -1,0 +1,24 @@
+/* Type comes from the global `.ka-mono` the component also carries; this
+   module only lays the three parts out and draws the hairline. */
+.masthead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1.2rem;
+  padding-bottom: 0.7rem;
+  /* Nextra floats a "Copy page" control at the top right of every article, and
+     on the landing page there is no breadcrumb row to hold it, so without this
+     it sits on top of the year. */
+  margin-top: 2.2rem;
+  margin-bottom: 1.6rem;
+  border-bottom: 1px solid var(--ka-rule);
+}
+
+/* On a narrow screen three letterspaced parts do not fit one row. The place
+   is the one that can go: the volume and the year are the record's
+   reference, and the footer still carries the place. */
+@media (max-width: 40rem) {
+  .place {
+    display: none;
+  }
+}

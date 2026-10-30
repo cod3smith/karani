@@ -1,0 +1,80 @@
+---
+title: "Roadmap"
+description: "What is next, what is deliberately not, and where the full item-by-item list with acceptance criteria lives."
+---
+
+# Roadmap
+
+<Lede>
+The authoritative list, with acceptance criteria per item, is
+[`docs/roadmap.md`](https://github.com/cod3smith/karani/blob/main/docs/roadmap.md)
+in the repository. This is the shape of it.
+</Lede>
+
+## Where things stand
+
+Two tiers are complete.
+
+**Production hardening.** Cross-run dedup in the candidate queries,
+advisory locks around billed runs, a Postgres-marked test suite, a run and
+cost ledger with a heartbeat, per-task model routing, a Slack listener
+allowlist, and the agent verify-before-draft gate ([ADR
+0016](/decisions/0016-tier0-production-hardening/)).
+
+**Conversion intelligence.** Funnel instrumentation, the worklist, the
+warm-path finder, freshness urgency, keyword-gap scoring on drafts, the
+interview prep pack and question bank, the rejection autopsy, and follow-up
+sequencing — all now measured through the conversion ledger ([ADR
+0022](/decisions/0022-conversion-ledger-and-variant-promotion/)).
+
+## What is next
+
+**Persistent per-source health metrics.** Pass statistics are ephemeral
+today: a source that has been quietly returning nothing for three weeks
+looks the same as a quiet week. A `source_runs` table and a history command
+would make the degradation visible. Half a day.
+
+**A comp overlay for undisclosed bands.** Most postings do not disclose, so
+the comp gate has nothing to act on and the fit score loses a real signal.
+Backfilling from a public comp dataset would feed both. A day.
+
+**More agent tools.** Reputation, recent news, engineering-blog recency —
+each is the kind of thing that decides whether a company is worth an
+application and that the pre-filter cannot see. Half a day each.
+
+**Cross-source dedup persistence.** The canonical hash suppresses
+duplicates within a run but not across runs, so the same role reappearing
+next week is a new row.
+
+**Auto-promotion of discovered companies.** `karani discover` finds ATS
+boards and promotes hits; the next step is promoting them into the curated
+list from measured yield rather than by hand.
+
+**A structured tool-call log per row**, so an agent-mode verdict can be
+audited rather than summarised.
+
+## What is explicitly not on it
+
+- **Fine-tuning.** Memory is few-shot context plus measurement, and the
+  verdict loop is the eval. A fine-tune would be a worse version of both
+  with a training pipeline attached.
+- **Submitting applications.** Not a roadmap item, not a future
+  consideration ([ADR
+  0012](/decisions/0012-autopilot-draft-human-send/)).
+- **Scraping LinkedIn or Indeed.** Hostile to their terms, and brittle.
+- **A dashboard.** The terminal, one HTML file, markdown and Slack.
+- **Multi-tenancy.** karani is one person's tool and the schema says so.
+
+## Good first issues
+
+The hardening tier is complete, so the remaining self-contained work is in
+the signal-quality tier: the per-source health metrics table and the
+additional agent tools. Both are well-bounded, both have acceptance
+criteria written down, and neither requires understanding the billed paths.
+
+Read
+[CLAUDE.md](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)
+first — the non-negotiable rules in section 4 apply to any change, and
+several of them are the kind of thing that looks like a style preference
+until you know which bug it came from. [Conventions](/project/conventions/)
+is the rest.

@@ -1,0 +1,23 @@
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.glyph {
+  color: var(--ka-ink);
+  flex: none;
+}
+
+.stroke {
+  fill: var(--ka-brand);
+}
+
+.word {
+  font-family: var(--ka-font-display);
+  font-size: 1.375rem;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1;
+  color: var(--ka-ink);
+}

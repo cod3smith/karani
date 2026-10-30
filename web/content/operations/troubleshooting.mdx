@@ -1,0 +1,206 @@
+---
+title: "Troubleshooting"
+description: "The failures that actually happen, what each one looks like, and what to do about it."
+---
+
+# Troubleshooting
+
+<Lede>
+Each of these has happened. They are in rough order of how often.
+</Lede>
+
+## Nothing is being fetched from one source
+
+karani prints the outcome per source, so a zero-row source is visible in
+the pass rather than hidden in the total.
+
+1. Try the endpoint by hand with `curl`. A slug that changed ATS 404s
+   quietly.
+2. Look at the `raw` payload on a recent row from that source. Feed schemas
+   drift, and `raw` is kept precisely so you can write a reparser instead
+   of losing the data.
+3. If several sources are empty at once, it is the network, not the feeds.
+
+## Everything is coming back as `maybe`
+
+Almost always a resume-and-prompt disconnect rather than a model problem.
+
+1. Is `data/resume.md` actually current? It is the thing every verdict is
+   written against.
+2. Read the qualification for one posting. If `recommended_positioning` is
+   generic, the model did not have enough to work with.
+3. Isolate model from prompt: run the same row on a different provider with
+   `--provider`. If both are vague, it is the prompt or the resume.
+
+## Nothing passes the pre-filter any more
+
+Read the `dropped` lines from `karani run`. They say which gate ate the
+pass.
+
+- `role not engineering-adjacent` eating most of it means `[profile] roles`
+  is narrower than you meant.
+- `region-locked` eating most of it, when you do have a relocation shape,
+  means the shape is not matching — check `destinations` and `requires`.
+- `comp below the floor` eating a lot means `MIN_COMP_USD` is above the
+  band for the roles you are actually hunting.
+
+Then `karani refilter`, which re-judges every stored row for free.
+
+## The autopilot drafts nothing, or drafts everything
+
+You changed the qualify model and left `[autopilot] min_fit` alone.
+
+A fit score is only comparable within the model that produced it. Measured
+over 598 rows, one model put 2 rows above 80 and another put 31 there — a
+floor of 85 is a different filter under each ([ADR
+0022](/decisions/0022-conversion-ledger-and-variant-promotion/)).
+
+Look at the new distribution with `karani funnel` before picking a number.
+
+## A pass takes hours
+
+Three local-model settings, in the order they bite:
+
+1. `OLLAMA_NUM_PARALLEL` above 1 splits the context window per slot. karani
+   matched its fan-out to it after a pass took 13.5 hours with the mismatch.
+2. `[hunt] qualify_limit` too high for the model. At 75-170 seconds a row,
+   15 rows is about half an hour.
+3. JSON grammar mode, if somebody added it back. It fights thinking models
+   at roughly 60 times slower, which is why karani does not ask for it.
+
+[Infrastructure](/operations/infrastructure/) has all three in full.
+
+## Qualification results look truncated or confused
+
+`OLLAMA_CONTEXT_LENGTH` is at its 4096 default and **silently truncating**
+your prompt, so the model is judging against a resume it never saw the end
+of.
+
+```bash
+launchctl setenv OLLAMA_CONTEXT_LENGTH 16384
+killall Ollama ollama
+curl -s localhost:11434/api/ps    # confirm context_length
+```
+
+And remember `launchctl setenv` does not survive a reboot.
+
+## The scheduler shows exit 127
+
+The binary is gone — almost always a deleted project virtualenv.
+
+```bash
+uv tool install --editable ".[slack,orchestrator,artifacts,memory,anthropic]"
+karani hunt
+```
+
+Nothing is lost. See [Scheduling](/operations/scheduling/) for why it must
+not run from a project venv.
+
+## The scheduler shows exit 78
+
+A relative path in a launchd plist. launchd has no working directory, so
+every path has to be absolute. `karani hunt` renders absolute paths; a
+hand-edited plist is the usual cause.
+
+## The scheduler looks healthy and nothing is happening
+
+This is the 40-hour failure. Check the marker file:
+
+```bash
+cat logs/.last-pass
+```
+
+If it is hours stale while `launchctl list` shows exit 0, a pass is wedged
+and launchd will not start another while it lives. The pass deadline now
+kills it ([ADR 0025](/decisions/0025-every-pass-has-a-deadline/)); if you
+are seeing this, check `KARANI_PASS_DEADLINE_SECONDS` is not set absurdly
+high.
+
+## "Another run holds the lock" straight after a deadline kill
+
+A pass killed at the deadline still holds its advisory lock until the
+database connection drops. Postgres releases session-scoped locks when the
+session ends, and the unlock tolerates a dead session, so this self-heals —
+but it is the first thing to check if the message appears right after a
+deadline kill.
+
+## The watcher reports `invalid_grant`
+
+The Gmail refresh token expired. An OAuth app left in Google's Testing mode
+expires them after seven days.
+
+```bash
+karani watch --authorize
+```
+
+Then paste the new token into `.env`. Publishing the app would stop this
+and cost you a Google review you do not need for a single-user tool.
+
+## The watcher matches almost nothing
+
+That is often correct, and it is the designed behaviour. An ATS sender
+domain never matches on its own, two tracked companies in one message is a
+refusal, and two open applications at one company need the role title to
+separate them.
+
+A wrong match writes a rejection onto the wrong company and poisons the
+only outcome labels the learning loop will ever have — and unlike a missed
+match, you never find out. Read a few passes with `--no-slack` and enter
+the unmatched ones by hand.
+
+## Memory calls log a spaCy warning
+
+```bash
+uv run python -m spacy download en_core_web_sm
+```
+
+Recall degrades rather than failing without it, so this is a warning to
+clear, not an outage.
+
+## Tests wrote to a real service
+
+They should not be able to: the suite strips every external credential
+before any module loads, and re-strips per test. Best-effort integrations
+read the environment at call time, so without the strip a developer's `.env`
+makes a "deterministic" test write to a live service — which happened once,
+as thirty fixture pages on the real Notion board.
+
+If you are adding a test, do not undo the strip. Pass dummy credentials
+explicitly where you need them.
+
+## The test suite got slow
+
+The default suite is deterministic and runs in about forty seconds, most of
+which is five subprocess tests. The in-process ones take about six.
+
+**When those six seconds climb, something is doing network I/O.** Treat it
+as a failure even when every test passes.
+
+## A migration failed
+
+It cannot have. Every schema change is `ADD COLUMN IF NOT EXISTS` and the
+whole block is idempotent. A migration failure means somebody broke the
+rule — revert it ([CLAUDE.md
+4.7](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)).
+
+## Starting over
+
+```bash
+# Re-qualify everything against an updated resume (normally automatic).
+psql "$DATABASE_URL" -c \
+  "UPDATE jobs SET qualification_resume_hash = NULL WHERE prefilter_passed = TRUE;"
+karani qualify
+
+# Never suggest a company again.
+psql "$DATABASE_URL" -c \
+  "UPDATE jobs SET active = FALSE, closed_at = NOW() WHERE company_display = 'X';"
+```
+
+<Note kind="warning" title="There is no clean slate worth taking">
+
+Truncating the tables destroys the application history, and that history is
+the only thing the conversion funnel has to learn from. There is no way to
+get it back. If you think you want a clean slate, you want a second
+database.
+
+</Note>

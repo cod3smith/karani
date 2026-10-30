@@ -1,0 +1,267 @@
+---
+title: "Architecture"
+description: "The data flow, the package boundaries and what each one is allowed to import, the storage schema, and the four extension points."
+---
+
+# Architecture
+
+<Lede>
+One rule of thumb runs through all of it: **each package should be
+independently substitutable.** The boundaries below are enforced by what a
+package is allowed to import.
+</Lede>
+
+## The flow
+
+```
+nine sources
+  |  async fetch, per-host semaphore, tenacity retry
+  v
+Job (pydantic)          content hash + canonical hash
+  |
+  v
+pre_filter()            deterministic, no model
+  |  role -> seniority -> geo -> remote -> comp -> skills -> score
+  |
+  +-- failed: reasons recorded, counted in the pass stats
+  |
+  v
+Postgres                jobs table (in-memory fallback is a real path)
+  |
+  v
+qualify_pending()       the LLM tier; idempotent per resume hash
+  |
+  v
+QualificationResult     fit score, verdict, strengths, gaps, positioning
+  |
+  +----------------+----------------+
+  v                v                v
+digest           draft            console
+                   |                |
+                   v                v
+              drafts/*.md      one HTML file
+                   |                |
+                   +-------> you press submit
+                                    |
+                                    v
+                        status / stage / outcome
+                                    |
+                                    v
+                   conversion ledger -> funnel, variants
+                                    |
+                                    v
+                   past verdicts -> the next qualify prompt
+```
+
+## Package boundaries
+
+### ingestion
+
+Everything before "does this row deserve model budget?" **No LLM imports at
+all** — no provider SDK, no client. If ingestion seems to need a model
+decision, the boundary is in the wrong place.
+
+Public surface: the fetcher registry, the orchestrator, `pre_filter`,
+`Storage`, and the `Job` model with its enums.
+
+### qualification
+
+Everything about "does this row match the candidate?" The only place model
+calls happen for filtering.
+
+Public surface: `get_qualifier(provider, model)`, the batch runner,
+single-turn and agent qualification, the `QualificationResult` model, and
+the tool registry.
+
+### drafting
+
+Everything about "produce something to send." Also model-backed.
+
+Beyond the pack factory: deterministic ATS keyword-gap scoring, tailoring
+as a *selection over profile records with a verified provenance trail*, and
+dossier-hooked follow-up notes.
+
+### coach
+
+Interview prep, fired by the state machine rather than by a verb. Half the
+pack never passes through a model: the comp figures are derived from the
+posted band, the declared floor and comparable postings already ingested,
+and the STAR stories are mined from the profile core and the career
+transcript with **every citation verified before it ships** ([ADR
+0024](/decisions/0024-prep-on-the-state-change/)).
+
+### intel
+
+Cached company dossiers from public probes, with a 14-day TTL — 3 days when
+a prep pack asks, because an interview wants fresher signal. One fetch,
+many consumers. Probes are tolerant: a dead probe degrades the dossier and
+never raises.
+
+### slackbridge
+
+Two halves with different dependencies. The push half is `httpx` only and
+works from cron; the listener needs an extra. The command mapper is a third
+thin adapter onto the same storage and runners ([ADR
+0010](/decisions/0010-slack-two-way-surface/)).
+
+### notionsync
+
+A one-way mirror. karani owns the schema. Page identity is a column on the
+job row: create once, patch after, recreate on a 404 ([ADR
+0011](/decisions/0011-notion-mirror/)).
+
+### autopilot
+
+One pass: pick candidates above the fit floor that are unreviewed and not
+already in the state machine, draft a pack for each, post a review card
+with buttons. A drafted posting leaves the pool, so nothing is billed
+twice.
+
+### watcher
+
+Read-only Gmail. The scope is `gmail.readonly` and nothing else, and a test
+asserts no module in the package names a write endpoint. Inbound mail is
+data and never instructions ([the watcher
+guide](/guides/watcher/) has the three structural defences).
+
+### analytics
+
+The conversion ledger, interval-reported statistics, named variants with a
+promotion rule that refuses on a small sample, and a derived weekly review
+([ADR 0022](/decisions/0022-conversion-ledger-and-variant-promotion/)).
+
+### submission
+
+The last mile: ATS form introspection, a deterministic answer sheet, one
+static HTML file, and the write-back ([ADR
+0023](/decisions/0023-submission-console-and-write-back/)).
+
+### mcp_server
+
+The interactive interface. A thin adapter: tools call the same runners and
+storage methods the CLI calls and hold no logic of their own. Storage is a
+lazily-connected process-wide singleton so the in-memory fallback keeps
+state across tool calls ([ADR 0008](/decisions/0008-mcp-server-interface/)).
+
+### The cross-package contract
+
+`Job` and `QualificationResult` are the **only** data structures shared
+across packages. A new field on either goes through both packages plus a
+storage change.
+
+## Storage
+
+One main table, `jobs`, with columns grouped by concern:
+
+| Group | Columns |
+|---|---|
+| Provenance | source, source id, content hash, canonical hash |
+| Posting | company, title, department, location, remote status, description, apply URL, posted at, tags, `raw` |
+| Comp | min, max, disclosed, original currency |
+| Pre-filter | the result as JSON, passed, score, role category, seniority |
+| Qualification | the result as JSON, verdict, fit score, qualified at, resume hash |
+| Feedback | user verdict, when |
+| State machine | status, applied at, `stages`, outcome, draft path |
+| Lifecycle | active, closed at, first seen, last seen, updated |
+
+Plus auxiliary tables for discovered companies, the memory ledger and the
+watcher's message log.
+
+Three rules:
+
+- **JSONB for anything that would otherwise need a shape-change
+  migration**: `raw`, the filter result, the qualification, the stages log.
+- **`ADD COLUMN IF NOT EXISTS` on every addition.** Never a destructive
+  migration ([CLAUDE.md
+  4.7](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)).
+- **No ORM.** Hand-written SQL on an async driver. Storage is small enough
+  that an ORM would be the larger thing to learn.
+
+The `stages` log is a JSONB append log rather than a normalized table, and
+the state machine is columns rather than its own table ([ADR
+0005](/decisions/0005-state-machine-columns-not-table/)). Both look wrong
+and are deliberate.
+
+## Extension points
+
+### An LLM provider
+
+Providers implement an informal protocol:
+
+```python
+class QualifierClient(Protocol):
+    model_name: str
+    async def complete(self, system: str, user: str) -> str: ...
+    # optional, for agent mode:
+    async def chat_turn(self, messages, tools=None) -> dict: ...
+```
+
+Subclass the OpenAI-compatible base if the wire format matches, implement
+from scratch if not, then `register_provider("name", builder)`. Third-party
+code can do that without forking. Guard any SDK import at construction
+time, so the module loads whether or not the SDK is installed ([ADR
+0017](/decisions/0017-pluggable-llm-providers/)).
+
+### An ingestion source
+
+Subclass the fetcher base. Three rules that matter more than the code:
+
+- Use the shared retrying fetch helper. A fetcher that calls the HTTP
+  client directly escapes the per-host limit, the backoff and the 404 fast
+  fail.
+- Call `.finalize()` on every posting, or both hashes are empty and dedup
+  silently stops working.
+- Register it, and add either slugs to `[[targets]]` or the enum to the
+  feed list.
+
+### An agent tool
+
+A dataclass with a name, a description, a JSON-schema parameter block and
+an async function. Return text and never raise — wrap errors as text.
+Respect the byte cap. Then append it to the default set, update the agent
+system prompt, and **bump the agent prompt version**.
+
+### A state-machine transition
+
+The status set is one frozen set, which is the source of truth. Add to it,
+extend the setter if the transition needs side effects, and test it. Most
+transitions need no new verb — `karani status` covers them.
+
+Note that a transition can spend money: `screen` and `interview` dispatch
+to the coach. Any future listener on a state change inherits all three of
+the coach's obligations — be idempotent on the stages log, record its
+marker even on failure so a retry cannot double-spend, and obey the kill
+switch ([CLAUDE.md
+4.14](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)).
+
+## Runtime characteristics
+
+| Stage | Cost | Wall time |
+|---|---|---|
+| Ingestion | Free | 30-60s for all nine sources |
+| Qualification, single-turn | ~$0.01/row hosted, $0 local | 75-170s/row local |
+| Qualification, agent mode | ~$0.05-0.15/row | Slower; concurrency capped lower |
+| Drafting | ~$0.03/draft | On demand |
+| Console | Free | One request per Greenhouse job, then cached |
+
+## Failure modes it is hardened against
+
+- A 404 on a slug that changed ATS: logged per source, the pass continues.
+- A feed schema drifting: `raw` preserves the original for a reparser.
+- A malformed model response: the row downgrades to `maybe` with an
+  explanation; the batch continues.
+- The database being down: the in-memory path runs.
+- Overlapping qualification runs: idempotent per resume and content hash.
+- An agent loop running away: iteration and tool-call caps, with a nudge
+  toward a final answer when the budget runs down.
+- A wedged pass: the hard pass deadline ([ADR
+  0025](/decisions/0025-every-pass-has-a-deadline/)).
+
+## Failure modes it is not
+
+Honestly listed, because the [roadmap](/project/roadmap/) is where they go:
+
+- No persistent per-source health metrics. Pass statistics are ephemeral.
+- No per-run cost attribution beyond the provider's own dashboard.
+- A failed qualification is re-selected on the next run but not retried
+  with any backoff, so a model having a bad day fails the same rows again.

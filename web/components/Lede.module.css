@@ -1,0 +1,13 @@
+.lede > p {
+  font-size: 1.3125rem !important;
+  line-height: 1.52 !important;
+  letter-spacing: -0.012em;
+  color: var(--ka-ink-muted);
+  max-width: 62ch;
+  margin-block: 0.9em 1.4em !important;
+}
+
+.lede strong {
+  color: var(--ka-ink);
+  font-weight: 600;
+}

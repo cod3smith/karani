@@ -1,0 +1,27 @@
+# Node
+node_modules/
+
+# Next.js build output
+.next/
+out/
+tsconfig.tsbuildinfo
+
+# next-env.d.ts is generated but committed on purpose: without it,
+# `npm run typecheck` on a fresh clone fails until something has run a
+# build first.
+
+# Generated on every docs build, from karani itself and from docs/adrs/.
+# None of it is edited by hand, and committing it would mean a reference
+# page could disagree with the code while still looking reviewed.
+#
+#   content/reference/cli.mdx     scripts/generate_cli.py    (the argparse parser)
+#   content/reference/mcp.mdx     scripts/generate_mcp.py    (app.list_tools())
+#   content/reference/config.mdx  scripts/generate_config.py (the pydantic schema)
+#   content/decisions/            scripts/generate_adrs.py   (docs/adrs/*.md)
+#   lib/*.generated.*             scripts/capture_samples.py (the fabricated samples)
+content/reference/cli.mdx
+content/reference/mcp.mdx
+content/reference/config.mdx
+content/decisions/
+lib/*.generated.ts
+lib/*.generated.json

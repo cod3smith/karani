@@ -1,0 +1,189 @@
+---
+title: "The inbox watcher"
+description: "Reads replies over a read-only Gmail scope, classifies them, matches them to an application conservatively, and advances the state machine only when it is certain."
+---
+
+import { samples } from '../../lib/samples.generated'
+
+# The inbox watcher
+
+<Lede>
+karani drafted 121 application packs and learned the outcome of none of
+them. The replies were in a mailbox and nothing read them, so the state
+machine never left `drafting` and the learning loop had no labels at all.
+</Lede>
+
+```bash
+karani watch --no-slack     # print the pass
+karani watch                # push it to Slack
+karani watch --days 30
+```
+
+<RunReport note="karani watch">{samples.transcripts.watch}</RunReport>
+
+## What it cannot do
+
+The OAuth scope is `gmail.readonly` and nothing else. **That is not a
+policy the code enforces, it is a capability Google does not grant it.**
+
+So karani cannot send mail, cannot delete, cannot archive, and cannot mark
+a message read. It leaves the mailbox exactly as it found it. Replies are
+*drafted* for a human to send — the same rule as never submitting an
+application.
+
+IMAP was rejected for precisely this reason. An IMAP password can send, and
+no amount of care in the code takes that power away again.
+
+## The pass
+
+```
+recent mail -> seen already? -> classify -> match -> advance -> draft a reply -> Slack
+```
+
+**Ledger first.** Classification is billed, so a message already handled
+never reaches a model. That is also what makes a pass idempotent: run it
+twice over the same fortnight and nothing advances twice.
+
+**Classify** — one label out of a closed set: `rejection`,
+`interview_invite`, `assessment`, `scheduling`, `offer`,
+`recruiter_outreach`, `irrelevant`. Any failure — no JSON, an unknown
+label, a dead endpoint — lands on `unclassified`, which is reported and not
+acted on. It is a seven-way label on a short email, so it is routed to a
+cheap model (`[llm.email]`).
+
+**Match** — deterministic, no model, the same tier split as the pre-filter.
+In order: a thread another message already matched; the company name found
+word-boundary anchored in the sender's display name, the subject, or the
+head of the body; a sending-domain label equal to the company handle. Only
+applications in flight are candidates.
+
+## Why matching refuses so often
+
+Three rules that each look over-cautious and each exist for a reason:
+
+- **An ATS sender domain never matches on its own.** It says which system
+  sent the mail, not which company. Half the mail in a job hunt comes from
+  the same three domains.
+- **Two tracked companies named in one message is a refusal.** That is a
+  newsletter, not a reply.
+- **Two open applications at one company need the role title to separate
+  them.** If it does not, that is a refusal too.
+
+An unmatched message is reported for manual entry, never guessed at. A
+wrong match writes a rejection onto the wrong company and poisons the only
+outcome labels the learning loop will ever have — and unlike a missed
+match, you will never find out.
+
+## Advancing
+
+Only on a **high**-confidence match, and the ladder only climbs.
+
+| Label | Effect |
+|---|---|
+| `rejection` | status `rejected`, outcome `rejection` |
+| `offer` | status `offer`, outcome `offer` |
+| `interview_invite` | `screen`, or `interview` if already past a screen |
+| `assessment` | `screen` |
+| `scheduling`, `recruiter_outreach` | a stage note only |
+| `irrelevant`, `unclassified` | nothing |
+
+Mail arrives out of order, so a transition applies only when it is strictly
+higher than the current status. The two terminal answers are always the
+truth.
+
+Every recognised label appends to the stages log whether or not the status
+moves, so the evidence survives either way.
+
+<Note kind="tip" title="A status move can spend money">
+
+`screen` and `interview` fire an interview prep pack ([ADR
+0024](/decisions/0024-prep-on-the-state-change/)). So a watcher pass that
+matches an invitation costs two model calls, unattended.
+`KARANI_AUTO_PREP=off` is the switch.
+
+</Note>
+
+## Email is data, never instructions
+
+Everything in a message was written by a stranger, and some of them will
+eventually try "ignore your previous instructions". The defence is
+structural rather than rhetorical:
+
+- content goes inside **one delimited block whose closing tag is stripped
+  from the content first**, so it cannot forge a boundary;
+- the only thing crossing back out of the classifier is **one label from a
+  closed set** — a model talked into answering `{"set_status": "offer"}` has
+  said nothing karani will act on;
+- matching never reads the body for a job id. `job_id: 11` in an email is a
+  claim, not a key.
+
+There is a regression test for each of those three.
+
+## Storage
+
+One additive table, created on first use. It holds message ids, the label
+and the match — **never a message body**. A mailbox's contents do not belong
+in the job database, and a karani database that leaked would not leak
+anyone's mail.
+
+## Setup
+
+karani cannot create a Google Cloud project for you. Once, by hand:
+
+1. **Create a project** at
+   [console.cloud.google.com](https://console.cloud.google.com/projectcreate).
+2. **Enable the Gmail API.** APIs & Services, Library, Gmail API, Enable.
+3. **Configure the consent screen.** User type **External**, your own
+   address for both support contacts. On the Scopes step add exactly one:
+   `https://www.googleapis.com/auth/gmail.readonly`. Add your own address
+   as a **Test user** and leave the app in Testing — publishing it means a
+   Google review you do not need for a single-user tool.
+4. **Create an OAuth client.** Credentials, Create credentials, OAuth
+   client ID, **Desktop app**.
+5. **Put the pair in `.env`:**
+   ```
+   GMAIL_CLIENT_ID=....apps.googleusercontent.com
+   GMAIL_CLIENT_SECRET=GOCSPX-...
+   ```
+6. **Consent once:**
+   ```bash
+   uv sync --extra gmail
+   karani watch --authorize
+   ```
+   A browser opens. Approve the read-only request, and the command prints a
+   refresh token for `.env` as `GMAIL_REFRESH_TOKEN`.
+
+<Note kind="caution" title="A testing-mode refresh token expires after 7 days">
+
+Google expires refresh tokens for apps left in Testing. If `watch` starts
+reporting `invalid_grant`, re-run step 6. Publishing the app would fix it
+and cost you a review process.
+
+</Note>
+
+The `gmail` extra is only needed for that consent flow. Reading the mailbox
+afterwards is plain `httpx` against a read-only scope.
+
+## Configuration
+
+```toml
+[llm.email]
+provider = "anthropic"
+model = "claude-haiku-5-5"
+
+[watcher]
+lookback_days = 14
+max_messages = 50
+# query = "-category:promotions"
+```
+
+Credentials never appear here.
+
+## Not scheduled
+
+`karani watch` is a verb, not a cron job. Wire it into the hourly chain
+once you trust what it reports — and read a few passes with `--no-slack`
+first, because the thing to check is what it *refuses* to match.
+
+Deliberately absent: no memory writes (outcomes belong to the conversion
+ledger), no calendar (a scheduling mail gets a draft, not an event).

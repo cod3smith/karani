@@ -1,0 +1,173 @@
+---
+title: "Qualification"
+description: "What the model is asked about a posting, what comes back, why every claim carries a quote, and why a fit score only means anything within one model and prompt version."
+---
+
+import { samples } from '../../lib/samples.generated'
+
+# Qualification
+
+<Lede>
+The billed tier, and the one that reads your resume. It runs over what the
+pre-filter let through — a couple of dozen postings out of a couple of
+thousand.
+</Lede>
+
+```bash
+karani qualify --limit 20
+karani qualify --agent --limit 5   # tool-using; 5-10x the cost per row
+```
+
+## What comes back
+
+<Verdict note="karani qualify">{samples.verdicts.qualified}</Verdict>
+
+A score, a three-way verdict, strengths with evidence, gaps with
+severities and mitigations, red flags, and a recommended angle. All of it
+validated against a pydantic model before it reaches the database, so a
+malformed response is caught rather than stored.
+
+The recommended positioning is the part that earns its keep. It is not a
+summary of the posting, it is an argument about which of your stories to
+lead with — and it is what the drafting step is handed.
+
+## Every claim carries a quote
+
+A strength is a claim plus the line of your own resume behind it. That is
+a contract, not a style:
+
+> A claim whose citation karani cannot verify is dropped, not repaired.
+
+The verification is mechanical. A quote that is not a verbatim span of your
+records is discarded. A rewrite that loses a figure the source had falls
+back to the original. A record left with no provenance is thrown away
+rather than patched up ([CLAUDE.md
+4.13](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)).
+
+This is not caution for its own sake. A fabricated accomplishment survives
+a resume screen and then gets probed for ten minutes by someone who
+interviews for a living, and you are the one in the room.
+
+## The three verdicts
+
+A `maybe` is not a hedge, it is a specific thing: the model found real
+overlap and a real problem, and the decision is yours.
+
+<Verdict note="karani qualify">{samples.verdicts.maybe}</Verdict>
+
+And a `skip` says what failed rather than just scoring low:
+
+<Verdict note="karani qualify">{samples.verdicts.skip}</Verdict>
+
+Notice that the skip still lists a strength. The shape failed, not the
+candidate, and saying so is what makes the verdict arguable — if the
+posting had offered relocation, this is a different answer.
+
+## What goes into the prompt
+
+Four things, in two parts.
+
+**The stable part** — the instructions, your resume, and your taste
+calibration from past verdicts. Identical for every posting in a pass.
+
+**The volatile part** — the posting.
+
+That split exists for prompt caching, and it is load-bearing: putting
+per-posting content above the breakpoint silently kills the cache and
+multiplies the bill. There is a test asserting the stable prefix is
+byte-identical across postings.
+
+Memory is injected too, scoped to the company: distilled facts from past
+verdicts and outcomes, rendered as a block with an explicit instruction
+that they are context and never override a dealbreaker in the posting
+itself. [Memory](/guides/memory/) is how they get there.
+
+## The feedback loop
+
+```bash
+karani verdict 1482 apply
+karani verdict 1544 skip
+```
+
+Each verdict becomes a few-shot `[posting → reaction]` pair in the next
+qualify prompt, and a distilled fact in the memory ledger. The pipeline's
+taste converges on yours with no retraining and no eval harness — the
+verdicts *are* the eval.
+
+Disagreements teach the most. A `skip` on something scored 82 is worth ten
+agreements.
+
+## Agent mode
+
+```bash
+karani qualify --agent --limit 5
+```
+
+The qualifier gets tools — web search, page fetch, GitHub org, Wikipedia —
+and gathers evidence about a company before ruling. It can find out whether
+a company that says nothing about pay bands has published one elsewhere,
+which is exactly the gap the pre-filter cannot close.
+
+It costs five to ten times as much per row, so it is for top candidates and
+never the daily batch ([ADR
+0007](/decisions/0007-agent-mode-optional-not-default/)). The loop is
+bounded on iterations and tool calls, and nudged toward a final answer when
+the budget runs down.
+
+Agent mode records what it looked at, so a verdict that leaned on a web
+result says so.
+
+## Idempotence
+
+A posting is re-qualified when, and only when, its content hash or your
+resume hash has changed. So:
+
+- Running `qualify` twice costs nothing the second time.
+- Editing your resume re-judges the whole shortlist, because what it was
+  judged against changed.
+- Overlapping runs are safe.
+
+```bash
+karani qualify --resume path/to/other-resume.md   # judge against a variant
+```
+
+## A fit score is not portable
+
+This is the one thing on this page that will cost you money if you ignore
+it.
+
+A fit score is only comparable **within the model and prompt version that
+produced it**. Measured over 598 rows: one model's mean score was 38, with
+2 rows above 80. Another's mean was 47, with 31 above 80. A third sat at
+51.
+
+The autopilot's draft floor had been tuned against the third and matched
+almost nothing under the first ([ADR
+0022](/decisions/0022-conversion-ledger-and-variant-promotion/)). So:
+
+- `karani funnel` pools fit bands only when one scorer produced every
+  score, and otherwise reports per-scale with a warning.
+- Every qualification row stores its model and prompt version — that is
+  what the foot of the plates above says.
+- **Change the qualify model and re-check `[autopilot] min_fit`.**
+
+## Failure is a verdict, not an exception
+
+A malformed response downgrades the row to `maybe` with an explanation,
+and the batch continues. A missing API key or a spent budget swaps in the
+local model and says so once. Nothing about qualification is allowed to
+kill a pass — a bad model day should cost you one unreviewed posting, not
+the hour.
+
+## Prompts are versioned
+
+`PROMPT_VERSION` and `AGENT_PROMPT_VERSION` are bumped on any material
+change, and every stored row carries the version it was judged under. That
+is the only thing that makes "old data" and "new data" distinguishable
+after the fact, which is what A/B and rollback need.
+
+## Next
+
+- [LLM providers](/guides/providers/) — which model, and what it costs.
+- [Drafting a pack](/guides/drafting/) — what is done with the verdict.
+- [Conversion analytics](/guides/analytics/) — whether any of it works.

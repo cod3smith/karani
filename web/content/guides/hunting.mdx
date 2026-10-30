@@ -1,0 +1,160 @@
+---
+title: "Hunting and filtering"
+description: "Nine sources, then a deterministic pre-filter that drops about 95% of them before any model is called — and the two bugs that shaped how it matches."
+---
+
+import { samples } from '../../lib/samples.generated'
+
+# Hunting and filtering
+
+<Lede>
+The free tier. Everything on this page happens without a model call, which
+is why it can run every hour over every posting on nine boards.
+</Lede>
+
+## The sources
+
+Two kinds, fetched differently.
+
+**Per-company ATS boards.** Greenhouse, Lever, Ashby and Workable each
+publish a company's open roles on a public JSON endpoint, keyed by the
+company's own slug — the `acme` in `boards.greenhouse.io/acme`. karani
+polls a curated list, extensible through `[[targets]]`.
+
+**Global feeds.** RemoteOK (tag-scoped), Himalayas (category-scoped),
+Remotive (category-scoped), We Work Remotely (already programming-only) and
+aijobs.net. These are firehoses, which is why the scoping matters.
+
+Workable is the odd one: it needs a per-posting detail fetch, so karani
+only detail-fetches titles that already pass a title regex. Otherwise the
+request count is absurd for the yield.
+
+Every fetcher goes through one retrying, concurrency-limited helper — a
+per-host semaphore, tenacity backoff on 5xx and 429, and a fast fail on
+404. A fetcher that called the HTTP client directly would quietly escape
+all three, so none is allowed to.
+
+<Note kind="note" title="Slugs go stale">
+
+A company that migrates from Greenhouse to Ashby leaves its old slug
+404ing, and nothing about that is loud. karani prints the outcome per
+source, so a zero-row source shows up in the pass rather than looking like
+a quiet week.
+
+</Note>
+
+## Discovery
+
+The feeds mention companies that are not in `[[targets]]`. `karani
+discover` probes those for an ATS board of their own and promotes the hits,
+so the curated list grows from what the feeds surfaced rather than from
+somebody remembering to add it.
+
+```bash
+karani discover --limit 10
+```
+
+## What the pre-filter checks
+
+In order, and each stage can veto:
+
+1. **Role family.** A deterministic classifier over the title, then the
+   tags, then a sample of the description. Sales, marketing, design and
+   operations are vetoed here, before anything else is considered.
+2. **Seniority.** Junior is a veto. A manager title is allowed but scored
+   lower, because the next role should be technical.
+3. **Geography and remote status.** A region-locked posting is vetoed —
+   *unless* it carries relocation signals, in which case it goes to the
+   model, which may accept it under the relocation shape.
+4. **Comp.** Below the floor where disclosed is a veto. Undisclosed is not.
+5. **Skill overlap.** Fewer than `min_skill_overlap` matches against
+   `must_have_any` is a veto.
+6. **Score.** What survives is scored 0-100 for ranking. Pay-parity
+   language, relocation support and skill depth are positive signals here,
+   not gates — companies rarely state pay parity in the posting itself, so
+   treating its absence as a veto would reject almost everything.
+
+<RunReport note="karani run">{samples.transcripts.hunt}</RunReport>
+
+The filter is location-agnostic by design. A US-only posting is vetoed
+whether the candidate is in Nairobi, Berlin or Buenos Aires — the signals
+are named for what they detect (`global_hire`, `regional_restriction`,
+`pay_parity`) and not for any one candidate's country.
+
+## Two bugs that shaped this
+
+Worth knowing, because they explain rules that otherwise look fussy, and
+both have regression tests.
+
+### Signal matching is word-boundary anchored
+
+`"us only"` matched `"campus only"` as a substring. Every posting
+mentioning a campus was vetoed as region-locked, and the pipeline was
+useless until someone looked at why nothing was getting through.
+
+So every location and role phrase is matched on word boundaries, through
+one shared helper. Never substring-match these, and there is a test that
+fails if someone does.
+
+### Comp parsing needs a currency anchor
+
+`"5-10 years experience"` parsed as a $5,000-$10,000 band, which hard-failed
+the comp floor on every posting that mentioned experience — which is all of
+them.
+
+So a number band is only read as compensation when a currency symbol or a
+comp keyword sits within 40 characters of it. Weakening that re-introduces
+the bug immediately.
+
+## De-duplication
+
+Two hashes per posting, both computed when the posting is finalized:
+
+- A **content hash** over the normalized text — lowercased, punctuation
+  stripped, whitespace collapsed. This is what makes "already seen" mean
+  "the posting has not changed" rather than "the whitespace has not
+  changed".
+- A **canonical hash** over company, normalized title and posted week.
+  This is what catches the same role appearing on Greenhouse and on three
+  feeds in one pass.
+
+The normalization matters more than it looks: changing what goes into the
+content hash makes every previously-qualified posting re-qualify, and that
+is billed ([ADR 0004](/decisions/0004-normalized-content-hash/)).
+
+## Staleness
+
+A posting not seen for `stale_job_days` (10 by default) is marked inactive
+with a closing timestamp. Dead requisitions sit on boards for months, and
+applying to one is worse than not applying — so the sweep runs on every
+pass, and `karani sweep --days 14` widens the window by hand.
+
+Nothing is ever deleted. The row stays with `active = FALSE`, because the
+history is the only thing the funnel has to learn from.
+
+## Changing the rules
+
+Edit `karani.toml`, then:
+
+```bash
+karani refilter
+```
+
+Free, re-judges every active row, and newly-passing rows queue themselves
+for the next qualify pass. [Saying what to hunt](/start/configure/) is the
+guide to what to edit; [karani.toml](/reference/config/) is the key list.
+
+## Adding a source
+
+Five steps, and three of them are rules rather than work:
+
+1. Add the enum value to `Source` in `karani/ingestion/models.py`.
+2. Write `karani/ingestion/<name>.py` as a `Fetcher` subclass.
+3. Use the shared retrying fetch helper. Never call the HTTP client
+   directly — that is how you escape the per-host limit and the backoff.
+4. Call `.finalize()` on every posting you build, or both hashes are empty
+   and dedup silently stops working.
+5. Register it, add slugs to `[[targets]]` if it is per-company or the enum
+   to the feed list if it is a feed, and write a test with a canned payload.
+
+The [architecture page](/project/architecture/) has the interface.

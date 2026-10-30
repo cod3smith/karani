@@ -1,0 +1,200 @@
+---
+title: "LLM providers"
+description: "Every task routes independently. Run bulk qualification free on a local model, keep a hosted one for drafting, and register your own provider without forking."
+---
+
+# LLM providers
+
+<Lede>
+Eight tasks, each independently routable, all behind one monthly budget.
+The recommended configuration runs the expensive-by-volume task for free.
+</Lede>
+
+## The split that matters
+
+```toml
+[llm.qualify]
+provider = "local"      # Ollama, LM Studio, vLLM. Zero token cost.
+model = "qwen3:4b"
+
+[llm.draft]
+provider = "openrouter"
+model = "moonshotai/kimi-k2-thinking"
+```
+
+Qualification is high volume and forgiving: a thousand postings a week, and
+a mediocre verdict costs you one review you did not need. Drafting is low
+volume and unforgiving: two a day, and the quality is what gets the
+interview.
+
+So pay for the second and not the first. That is one config block ([ADR
+0017](/decisions/0017-pluggable-llm-providers/)).
+
+## The tasks
+
+| Task | What it does | Volume |
+|---|---|---|
+| `qualify` | Score a posting against the resume | High |
+| `agent` | The tool-using qualifier | Low, expensive per row |
+| `draft` | Cover letter and application answers | Low |
+| `tailor` | Select resume records for a role | Low |
+| `humanize` | Rewrite a draft out of model register | Low |
+| `prep` | Interview prep pack | Rare |
+| `followup` | A note for a silent application | Rare |
+| `email` | Classify one inbound reply, seven ways | Low, trivial per call |
+| `default` | Fallback for any knob a task leaves unset | — |
+
+Anything a task does not set falls back to `[llm.default]`, so one
+`provider` there covers everything you have not routed by hand.
+
+## The four built-in providers
+
+### local
+
+Any OpenAI-compatible server — Ollama, LM Studio, vLLM, llama.cpp. No API
+key, no outage, no token cost.
+
+```toml
+[llm.qualify]
+provider = "local"
+model = "qwen3:4b"
+base_url = "http://localhost:11434/v1"   # the default
+```
+
+Agent mode works with local models that support tool calling (qwen3,
+llama3.3). There are real operational traps here — context truncation,
+parallel slots, grammar mode — and they are on the
+[Infrastructure](/operations/infrastructure/) page rather than this one,
+because they will cost you a thirteen-hour pass if you get them wrong.
+
+### openrouter
+
+Any OpenRouter model slug. The built-in hosted fallback, using only
+`httpx` — no SDK to install.
+
+```bash
+QUAL_PROVIDER=openrouter QUAL_MODEL=moonshotai/kimi-k2-thinking \
+  karani qualify --limit 20
+```
+
+Reasoning tokens count toward the completion cap, so the default token
+limit allows for a thinking model's trace.
+
+### openai — and any OpenAI-compatible cloud
+
+`OPENAI_API_KEY` gets you the API itself. Add `base_url` and `api_key_env`
+and the same provider speaks to Groq, Together, Mistral, DeepSeek or a
+remote vLLM:
+
+```toml
+[llm.humanize]
+provider = "openai"
+model = "llama-3.3-70b-versatile"
+base_url = "https://api.groq.com/openai/v1"
+api_key_env = "GROQ_API_KEY"
+```
+
+`api_key_env` is the **name** of an environment variable. The key itself
+never goes in `karani.toml` — the docs build fails on a config field whose
+name looks like a credential, which is how that stays true.
+
+### anthropic
+
+Direct, with the SDK as an extra:
+
+```bash
+uv sync --extra anthropic
+QUAL_PROVIDER=anthropic QUAL_MODEL=claude-haiku-5-5 karani qualify --limit 50
+```
+
+The SDK import is guarded at construction time, so the module loads and the
+rest of karani works whether or not it is installed.
+
+## Overriding for one run
+
+Loosest to tightest:
+
+```toml
+[llm.qualify]
+provider = "local"               # what you run on
+```
+
+```bash
+QUAL_PROVIDER=openrouter karani qualify   # an experiment
+karani qualify --provider anthropic       # a one-shot
+```
+
+So a flag beats an environment variable beats the file. `karani config
+check` prints the result for every task.
+
+## Mixing in one pass
+
+Nothing stops you:
+
+```bash
+karani qualify --limit 50          # local, free
+karani draft 1482 --provider openrouter   # hosted, for the thing that matters
+```
+
+## Registering your own
+
+A provider is a registry entry, not a fork. Subclass the
+OpenAI-compatible base if the wire format matches, or implement
+`complete()` — and `chat_turn()` if you want agent mode — from scratch if
+it does not. Then:
+
+```python
+from karani.qualification import register_provider
+
+register_provider("my-provider", build_my_provider)
+```
+
+Third-party code can call that without touching karani. The
+[architecture page](/project/architecture/) has the client protocol.
+
+## The budget
+
+```toml
+[budget]
+monthly_usd = 15.0
+warn_at = 0.8
+```
+
+karani prices every response and tracks the month's spend. Past the cap —
+or with no API key set at all — the factory returns the local model and
+records why, and the pass announces the change **once** rather than alerting
+every hour.
+
+That is the rule, and it is not negotiable in either direction: billed work
+degrades, it never halts and it never overspends ([ADR
+0019](/decisions/0019-hosted-tiers-behind-a-budget/)). A missing key is not
+a crash, and a spent budget is not a surprise invoice.
+
+<Note kind="caution" title="Changing the qualify model invalidates your fit floor">
+
+A fit score is only comparable within the model that produced it. Measured
+over 598 rows, one model's mean was 38 and another's 47. The autopilot's
+draft floor is a number on that scale, so changing the model and leaving
+`[autopilot] min_fit` alone means karani either drafts nothing or drafts
+everything ([ADR
+0022](/decisions/0022-conversion-ledger-and-variant-promotion/)).
+
+</Note>
+
+## Prompt caching
+
+The qualification prompt is split so that the instructions, your resume and
+your taste calibration form a byte-identical prefix across every posting in
+a pass, and only the posting varies. On a provider that caches, that is most
+of the bill.
+
+It is also fragile: moving per-posting content above the breakpoint kills
+the cache silently and nothing in the output says so. There is a test that
+asserts the prefix is identical across postings, which is the only reason it
+has stayed true.
+
+## Tests never reach a billed endpoint
+
+The test suite strips every provider key before any module loads, and the
+LLM-facing tests use fake clients. A test that needed a key would be a test
+that bills someone to run the suite.

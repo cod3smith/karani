@@ -1,0 +1,133 @@
+---
+title: "Vision and non-goals"
+description: "The problem karani solves, the two bets it makes, and the six things it deliberately does not do."
+---
+
+# Vision and non-goals
+
+<Lede>
+karani is a personal tool, not a product. Knowing what it refuses to do is
+most of understanding it.
+</Lede>
+
+## The problem
+
+Applying to senior and staff engineering roles from outside the usual
+locations is a signal-to-noise problem, not a discovery problem. The boards
+surface thousands of postings a day. The intersection of *fully remote with
+no country restriction*, *paid at San Francisco bands regardless of
+location*, and *a role you are actually qualified for* is well under 1% of
+the raw volume.
+
+Finding that 1% by hand takes forty-five minutes a day and still misses
+most of it. Five applications a week, maybe one screen for the effort.
+
+karani inverts the shape: ingest broadly and cheaply, filter in tiers,
+qualify against a real resume, draft the application. The goal is **fewer,
+better-fit applications, better tailored, in less time** — not more
+applications.
+
+## Two bets
+
+**Global-remote at San Francisco bands is a real and growing segment.** The
+list of companies that hire globally at one published band is small but
+shipping. If you can *reliably identify* those roles in the flood, the
+funnel is dramatically better than the location-adjusted market. The whole
+pre-filter exists to make that identification reliable.
+
+**Models are cost-effective at the qualification tier, not the discovery
+tier.** Running a model over every posting on every feed is expensive and
+no better than arithmetic. Running one over the twenty that survived
+arithmetic is cheap enough to do carefully. The tier split is the first
+decision in the project and everything else sits on it ([ADR
+0001](/decisions/0001-tiered-filter-not-single-llm-pass/)).
+
+## The positioning axes
+
+Every design decision traces to one of these:
+
+| Axis | How it is treated |
+|---|---|
+| Global-remote vs region-locked | Region-locked is a veto, **unless** relocation is sponsored |
+| SF bands vs location-adjusted | Location-adjusted lowers the score; below the floor where disclosed is a veto |
+| Senior IC vs junior or manager | Junior is a veto; manager is allowed but scored lower |
+| Engineering-adjacent vs everything else | Sales, marketing, design and operations are vetoed at the classifier |
+
+The signals are named for what they detect — `global_hire`,
+`regional_restriction`, `pay_parity` — and not for any candidate's country.
+The filter is location-agnostic even though the motivation was not: a
+US-only posting is vetoed wherever you live.
+
+Role scope has widened once. Computational-biology **research engineering**
+is in scope as of October 2026, where the work is building systems and
+models rather than bench science; wet-lab titles stay excluded ([ADR
+0021](/decisions/0021-computational-bio-is-in-scope/)).
+
+## Who it is for
+
+One person, and that is a design constraint rather than a limitation to fix:
+
+- No multi-tenant assumptions anywhere in the schema. Single-user
+  throughout.
+- No admin UI. A CLI, an HTML console, generated markdown, and three
+  conversational surfaces.
+- No accounts, no auth, no sharing. Local files and a local database.
+
+To use it yourself, fork it and rewrite `karani.toml`, `data/resume.md` and
+probably the curated target list. The prompts are already de-personalised —
+nothing about the candidate is hard-coded in them, it is rendered from
+`[positioning]`.
+
+## Non-goals
+
+These are deliberate, so that effort does not get spent on them.
+
+**It is not a job board.** No public site, no discovery experience for
+anyone else.
+
+**It is not an applicant-tracking system.** The state machine tracks your
+applications, not a company's candidates.
+
+**It will not submit applications.** Autonomy stops at a drafted pack and a
+state transition. You press submit. Three reasons, and all three still
+hold: some applications have terms about automated submission; one bad
+model day becomes thirty broken applications, sent; and a recruiter's read
+of a personal application is part of what you are sending ([ADR
+0012](/decisions/0012-autopilot-draft-human-send/)).
+
+**It will not scrape LinkedIn or Indeed.** Hostile to their terms, and
+brittle. A company that only posts there gets added to the target list by
+hand.
+
+**It is not a general-purpose model harness.** Every prompt is
+career-specific and lives in a versioned module.
+
+**It is not a dashboard.** No charts. The terminal, one HTML file, markdown,
+Slack.
+
+## Success metrics
+
+Real ones:
+
+- **Time to shortlist** — minutes between "karani ran" and "I know what to
+  apply to". Target: under 15.
+- **Qualification precision** — the share of `qualified` rows you agree
+  with, once the feedback loop has 30 or more pairs. Target: over 60%.
+- **Application-to-screen conversion** — the baseline was about 1 in 5.
+  Target: better than 1 in 3.
+- **Model cost per applied role** — target under $2 all in, which the
+  reference configuration beats by running qualification locally.
+
+## Non-metrics
+
+Deliberately not tracked, because optimising them makes the tool worse:
+
+- Total postings ingested. More sources is not more value.
+- Total qualifications run. Cost per *applied* role is what matters.
+- Model eval scores. The verdict feedback loop is the eval.
+
+## Where it stands
+
+A personal tool with one user, published because the pieces are useful and
+the decisions are worth reading. There is no hosted version and no plan for
+one.

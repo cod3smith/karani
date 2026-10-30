@@ -140,6 +140,15 @@ karani/                              (repo)
 │   │     console.py (one static HTML file) · pack.py · runner.py
 │   └── mcp_server/                  ← MCP interface, 25 tools, thin adapter (ADR 0008)
 │
+├── web/                             ← the documentation site (Next.js + Nextra,
+│     static export). `npm run check` = build + 10 gates: AA contrast in both
+│     themes, shiki colours, selectors matched against the built HTML, links,
+│     sitemap, and a synthetic-data gate that fails if anything from
+│     data/resume.md or a real posting reaches a page. content/reference/
+│     {cli,mcp,config}.mdx and content/decisions/ are GENERATED from the
+│     argparse parser, app.list_tools(), the pydantic schema and docs/adrs/ —
+│     gitignored, never hand-edited.
+│
 ├── docker-compose.yml               ← dev infra (pgvector db :5433, minio :9010, ollama)
 ├── data/                            ← resume.md (yours, gitignored) + .example
 ├── drafts/                          ← generated packs (gitignored)

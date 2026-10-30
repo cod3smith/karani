@@ -1,0 +1,208 @@
+---
+title: "Saying what to hunt"
+description: "karani.toml owns the roles, the comp shapes, the legal facts and which model runs each task. Changing any of it is a config edit, not a code edit."
+---
+
+# Saying what to hunt
+
+<Lede>
+`karani init` writes the file. This page is what the file means, and why
+changing it is the only way you should ever change what karani hunts.
+</Lede>
+
+```bash
+karani init          # the wizard
+karani config check  # what it resolved to, after env and flags
+```
+
+Two things live in `karani.toml`: **what counts as a job you would take**,
+and **which model runs each task**. Nothing else needs to change to point
+karani at a different hunt — that is the point of the file ([ADR
+0015](/decisions/0015-namespace-config-pypi/)). The full key-by-key
+reference is [karani.toml](/reference/config/), generated from the schema;
+this page is the shape of a decision rather than the list of knobs.
+
+<Note kind="warning" title="No secrets in this file">
+
+API keys, tokens and database URLs go in `.env`. `api_key_env` is the only
+key here that mentions a credential, and it holds the **name** of an
+environment variable — `"GROQ_API_KEY"`, not the key. The docs build fails
+on a config field whose name looks like a credential, so this stays true.
+
+</Note>
+
+## Shapes: more than one kind of acceptable job
+
+The hardest part of a senior hunt is that two completely different jobs are
+both acceptable, and a filter tuned for one rejects the other. karani's
+answer is **shapes**, which are additive: a posting qualifies if it fits
+any one of them ([ADR
+0002](/decisions/0002-sf-band-global-remote-positioning/)).
+
+```toml
+# Shape one: they pay San Francisco bands wherever you live.
+[[shapes]]
+name = "global-remote-sf-bands"
+remote = "required"
+comp_floor_usd = 160000
+
+# Shape two: they sponsor a visa, and local top-of-market is fine there.
+[[shapes]]
+name = "relocation-eu-japan"
+remote = "any"
+destinations = ["DE", "NL", "IE", "JP"]
+requires = ["visa_sponsorship"]
+```
+
+Without the second shape, a Berlin role that sponsors relocation gets
+vetoed twice over — it is not remote, and it is region-locked. With it, the
+same posting goes to the model, which is allowed to accept local
+top-of-market comp for a role of that shape. Adding a shape never weakens
+an existing one.
+
+## Profile: the first gate
+
+```toml
+[profile]
+roles = ["software_engineering", "ml_ai", "research"]
+seniority = ["senior", "staff", "principal"]
+must_have_any = ["python", "go", "rust", "sql"]
+min_skill_overlap = 2
+```
+
+This is the cheapest place to change your mind. Edit it, run `karani
+refilter`, and every stored posting is re-judged for free — no re-ingest and
+no model call.
+
+`allow_titles` is the escape hatch. karani ships title exclusions that
+encode a generic software-engineering hunt, and a candidate whose own
+background covers an excluded domain lifts the terms out ([ADR
+0021](/decisions/0021-computational-bio-is-in-scope/)):
+
+```toml
+allow_titles = ["computational biologist", "biologist", "bioinformatics"]
+```
+
+<Note kind="caution" title="Name every term that matches the title">
+
+Allowing `computational biologist` does nothing while `biologist` is still
+excluded, because the exclusion matches first. When you lift a term, lift
+every term in the built-in list that the title you want would hit. Wet-lab
+titles stay excluded on purpose — the scope here is building systems and
+models, not bench science.
+
+</Note>
+
+## Legal: the block a model never touches
+
+```toml
+[legal]
+citizenships = ["KE"]
+based_in_country = "KE"
+work_authorized_in = ["KE"]
+remote_engagement = ["employer_of_record", "contractor"]
+relocation_open_to = ["DE", "NL", "IE", "JP"]
+notice_period_days = 30
+```
+
+This is the most consequential block in the file, and the most easily
+skipped. Work authorization, sponsorship, relocation and start date on
+every application form are **derived** from these facts by code
+(`karani/legal.py`), on every surface — the pack, the answer sheet, the
+console. A drafting model may receive the resolved line; it never writes
+one.
+
+The reason is not caution in the abstract. *"Will you require sponsorship?"*
+has **opposite correct answers** depending on which shape the role fits: no
+for a global-remote role engaged through an employer of record, yes for the
+Berlin role that sponsors a visa. A model that gets it right most of the
+time is producing a misrepresentation on a signed application the rest of
+the time ([CLAUDE.md
+4.12](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)).
+
+An unknown geography resolves to **needs review**, never to an assumed yes.
+Leaving this block empty does not break anything; it means more fields come
+out flagged.
+
+## Positioning: what goes in the prompt
+
+```toml
+[positioning]
+based_in = "Nairobi, Kenya"
+candidate = "a senior/staff engineer"
+narrative = "targeting fully-remote roles at companies that pay at San Francisco bands regardless of location, or roles that sponsor a visa and relocation"
+```
+
+Nothing about the candidate is hard-coded in karani's prompts; they are
+rendered from this. It is what makes the prompts somebody else's to use.
+
+## Which model runs what
+
+Every task routes independently, and this is the block that decides what
+karani costs:
+
+```toml
+# The recommended split: free local qualification, hosted drafting.
+[llm.qualify]
+provider = "local"
+model = "qwen3:4b"
+
+[llm.draft]
+provider = "openrouter"
+model = "moonshotai/kimi-k2-thinking"
+```
+
+Qualification is high volume and forgiving — a thousand postings a week,
+and a mediocre verdict costs you one review. Drafting is low volume and
+unforgiving — two a day, and the quality is what gets the interview. Paying
+for the second and not the first is the obvious trade, and it is one config
+block ([ADR 0017](/decisions/0017-pluggable-llm-providers/)).
+
+[LLM providers](/guides/providers/) has the rest: pointing the `openai`
+provider at Groq or Together, registering your own, and what agent mode
+costs.
+
+## The budget
+
+```toml
+[budget]
+monthly_usd = 15.0
+warn_at = 0.8
+```
+
+karani's slice of the account, not the whole balance. Past the cap, billed
+providers are swapped for the local model and the pass announces the change
+once. Billed work degrades; it never halts and never overspends ([ADR
+0019](/decisions/0019-hosted-tiers-behind-a-budget/)).
+
+## How a value is resolved
+
+Loosest first:
+
+1. The schema defaults — the behaviour karani had before the file existed.
+2. `karani.toml`, in the working directory or `~/.karani/`.
+3. An environment variable: `QUAL_PROVIDER`, `QUAL_MODEL`, `MIN_COMP_USD`.
+4. A command-line flag: `--provider`, `--model`.
+
+So the file is what you run on, an environment variable is an experiment,
+and a flag is a one-shot. `karani config check` prints the result.
+
+## After a change
+
+```bash
+karani refilter   # re-run the pre-filter over every active row
+```
+
+Free, and newly-passing rows queue themselves for the next qualify pass. If
+you changed your resume instead, nothing to run: the next qualify pass
+notices the hash changed and re-judges.
+
+Signal *phrases* — the actual strings the geo and pay-parity matchers look
+for — live in `karani/ingestion/config.py` rather than in the config file.
+Extending them is a pull request, deliberately: they are the mechanism the
+positioning depends on, and one careless substring made the whole pipeline
+useless once.
+
+## Next
+
+[Run your first pass](/start/first-hunt/).

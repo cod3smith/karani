@@ -1,0 +1,196 @@
+---
+title: "Your first pass"
+description: "Ingest, qualify, review, draft, send, record. The whole loop in nine commands, with what each one costs."
+---
+
+import { samples } from '../../lib/samples.generated'
+
+# Your first pass
+
+<Lede>
+The daily loop is six commands, and the first two are the whole pipeline.
+Here they are in the order you would actually type them, with what each one
+costs.
+</Lede>
+
+## 1. Fetch and filter, for free
+
+```bash
+karani run
+```
+
+Nine sources, fetched concurrently with a per-host limit and retries, then
+classified, filtered, de-duplicated across sources, stored, and swept for
+postings that have gone quiet.
+
+<RunReport note="karani run">{samples.transcripts.hunt}</RunReport>
+
+Read the `dropped` lines. They are the pre-filter telling you what your
+rules did, and they are the best feedback on a config you have just
+written: if `role not engineering-adjacent` ate half the pass, your
+`[profile] roles` is narrower than you meant.
+
+**No model is called**, so run this as often as you like. The `flagged`
+line about a source returning zero rows is worth noticing — a slug that
+changed ATS 404s quietly, and karani reports it per source rather than
+failing the pass.
+
+## 2. Judge what survived
+
+```bash
+karani qualify --limit 20
+```
+
+<RunReport note="karani qualify">{samples.transcripts.qualify}</RunReport>
+
+On the reference configuration this is free: `[llm.qualify]` points at a
+local model. On a hosted model it is roughly a cent a row.
+
+It is **idempotent per resume hash**. Run it twice and the second run costs
+nothing; edit your resume and the next run re-judges everything, because
+the thing it was judging against changed.
+
+<Note kind="tip" title="Start with a small limit">
+
+On a local model a row takes 75 to 170 seconds. Twenty rows is half an hour.
+That is fine for a first run and wrong for a scheduled one — `[hunt]
+qualify_limit` is the knob that has to fit inside the hour, and a pass that
+cannot finish silences every pass after it ([ADR
+0025](/decisions/0025-every-pass-has-a-deadline/)).
+
+</Note>
+
+## 3. See what it found
+
+```bash
+karani actions                 # the prioritized worklist
+karani shortlist               # just the ranked roles
+karani digest --format html --output data/digest.html
+```
+
+`karani actions` is the one to reach for. It is not a list of jobs, it is a
+list of *moves*: what to review, what to draft, what to send, what to follow
+up. Fast-lane roles — high fit, posted in the last three days — are flagged,
+because applying on day one is measurably different from applying on day
+nine.
+
+## 4. Argue with it
+
+```bash
+karani verdict 1482 apply
+karani verdict 1544 skip
+```
+
+This is the part people skip and should not. Every verdict does three
+things at once: records your reaction, becomes a few-shot `[posting →
+reaction]` example in the next qualify prompt, and writes a distilled fact
+to the memory ledger. karani's judgement converges on yours without any
+retraining, and `karani funnel` tells you whether it is working.
+
+The disagreements carry most of the signal. A `skip` on something karani
+scored 82 teaches it more than ten agreements.
+
+## 5. Build the pack
+
+```bash
+karani draft 1482
+```
+
+A tailored resume, a cover letter in your voice, and answers to the
+application's questions. **Billed**, and the one step worth paying for.
+
+Every claim about you is a selection over your own records with the
+citation verified before it ships. A rewrite that loses a figure the source
+had falls back to the original; a claim karani cannot trace is dropped
+rather than repaired.
+
+## 6. Send it yourself
+
+```bash
+karani console
+open data/submission_console.html
+```
+
+<RunReport note="karani console">{samples.transcripts.console}</RunReport>
+
+One HTML file, no server, works on a phone. Per job: the apply link,
+presigned links to the rendered documents, and the job's **real** questions
+with an answer and a copy button on each.
+
+Then you open each portal, paste, and press submit. karani does not, and
+will not ([ADR 0012](/decisions/0012-autopilot-draft-human-send/)).
+
+## 7. Record what you sent
+
+```bash
+karani submitted 1482 1511 --cold
+```
+
+The console prints this line for you with the ids you ticked. Running it
+writes the status, the timestamp, and a snapshot of the artifact version
+that went out.
+
+Skipping it does not cost you bookkeeping, it costs you the **measurement**:
+that write-back is what arms the follow-up logic and gives the conversion
+funnel its labels. An application karani does not know you sent is an
+application it can never learn from.
+
+`--warm` and `--cold` say how you applied. The warm-versus-cold split is
+one of the few comparisons in the funnel with a large enough effect to show
+up quickly.
+
+## 8. Track it
+
+```bash
+karani status 1511 screen
+karani stage 1511 recruiter_screen --notes "30-min chat"
+karani asked 1511 "How do you decide what not to build?"
+karani outcome 1544 rejection
+```
+
+Moving an application to `screen` or `interview` does something on its own:
+it builds an interview prep pack, unattended. A refreshed company dossier,
+likely questions derived from the gap analysis, STAR stories mined from
+your own records with every citation verified, comp research derived from
+the posted band, and questions to ask — as markdown, `.docx` and PDF, with
+a Slack card ahead of the date ([ADR
+0024](/decisions/0024-prep-on-the-state-change/)).
+
+It is billed, so it has a switch within reach: `KARANI_AUTO_PREP=off`.
+
+## 9. Let it run
+
+```bash
+karani hourly      # one full pass: ingest, qualify, draft, deliver
+karani hunt        # schedule that hourly, plus twice-daily summaries
+```
+
+<RunReport note="karani hourly">{samples.transcripts.hourly}</RunReport>
+
+Quiet by design: an hour with nothing new posts nothing. Spending is
+triple-bounded — a fit floor, a per-run draft cap, and one shared daily
+budget across all 24 runs.
+
+See [Scheduling](/operations/scheduling/) before you turn this on. There is
+one real trap in it, and it is about which binary the scheduler runs.
+
+## The whole loop
+
+```bash
+karani run                    # free
+karani qualify --limit 20     # free on local, ~$0.01/row hosted
+karani actions                # free
+karani verdict 1482 apply     # free
+karani draft 1482             # billed, and worth it
+karani console                # free
+karani submitted 1482 --cold  # free
+```
+
+## Next
+
+- [Hunting and filtering](/guides/hunting/) — what the pre-filter actually
+  checks, and the two bugs that shaped it.
+- [Qualification](/guides/qualification/) — what the model is asked, and
+  what is done with the answer.
+- [The submission console](/guides/submission/) — how the real questions
+  are read, and how the answers are sourced.

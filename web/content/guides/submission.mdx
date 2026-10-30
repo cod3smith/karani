@@ -1,0 +1,150 @@
+---
+title: "The submission console"
+description: "One HTML file with the whole queue in it: each job's real application questions, an answer tagged with where it came from, and a copy button on every field. No server, and no submit button."
+---
+
+import { samples } from '../../lib/samples.generated'
+
+# The submission console
+
+<Lede>
+The last mile, and the one karani does not walk. It reads each job's actual
+application form, answers it where it honestly can, and lays the whole
+queue out on one page for you to send.
+</Lede>
+
+```bash
+karani console
+open data/submission_console.html
+```
+
+<RunReport note="karani console">{samples.transcripts.console}</RunReport>
+
+Free: no model is called. One HTTP request per Greenhouse job the first
+time, cached on the row after that.
+
+## Why a static file
+
+A server would need a port, a process, and a reason to be running when the
+laptop sleeps. A file opens from iCloud or AirDrop on a phone, which is
+where a queue actually gets cleared — an hour on the sofa, not an hour at a
+desk.
+
+The cost is that "mark submitted" cannot write to the database from the
+page. So the console remembers your ticks in the browser's own storage and
+prints one command to run afterwards. That trade was made deliberately
+([ADR 0023](/decisions/0023-submission-console-and-write-back/)).
+
+Nothing in the page posts anywhere.
+
+## The real questions
+
+Greenhouse, Lever and Ashby publish their application forms on the same
+public endpoints karani already ingests postings from. So the console does
+not guess at a standard form — it asks:
+
+- the **wording** is the company's own
+- the **option values** of a select are the company's own
+- a question karani has never seen before still appears
+
+An ATS that exposes nothing degrades to a standard field set, and the card
+says so rather than implying the form was read. `KARANI_ATS_QUESTIONS=off`
+disables introspection entirely, and the console then touches no network at
+all.
+
+```bash
+karani console --refresh    # re-read the forms rather than using the cache
+```
+
+## Every answer says where it came from
+
+That tag on each field is the point of the page. Five sources, and they are
+not equivalent:
+
+| Source | What it means |
+|---|---|
+| `profile` | From your own records. Name, email, links. (In these examples, Ada Mwangi, who is invented.) |
+| `legal` | **Derived by code** from `[legal]`. Never written by a model. |
+| `pack` | Drafted for this role, from the verified records. |
+| `document` | A rendered file to attach. |
+| `voluntary` | Demographic. Left blank. |
+
+And one non-source: a field karani has no answer for is **flagged**, in
+amber, with the textarea empty. It is not filled with something plausible.
+You will type that one yourself, and the console's job is to make sure you
+notice it rather than paste a guess.
+
+## The legal fields
+
+Work authorization, sponsorship, relocation and start date come from
+`karani/legal.py`, resolved from the facts you declared and signed. No
+model is in that path on any surface.
+
+The reason bears repeating, because this is the field people assume is
+boilerplate: *"Will you now or in the future require sponsorship?"* has
+**opposite correct answers** depending on which shape the role fits. No for
+a global-remote role engaged through an employer of record; yes for the
+role that sponsors a visa to Berlin. These are attestations you sign, and
+"the model usually gets it right" is not a defence ([CLAUDE.md
+4.12](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)).
+
+An unknown geography resolves to **needs review**. It never resolves to an
+assumed yes.
+
+## Demographic questions are blank
+
+Every voluntary EEO field is left empty and dimmed. They are voluntary, the
+answer is yours, and there is no defensible default for karani to pick.
+
+## The write-back
+
+The console prints the line with the ids you ticked:
+
+```bash
+karani submitted 1482 1511 1523 --cold
+```
+
+That writes three things: the status, the timestamp, and **a snapshot of the
+artifact version that went out**. The third one is why it matters — without
+it, a pack that got an interview cannot be told apart from the version you
+edited afterwards.
+
+Skipping the write-back does not cost you bookkeeping, it costs you the
+measurement. It is what arms the follow-up logic and what gives the
+conversion funnel its labels, so an application karani does not know you
+sent is an application it can never learn from.
+
+`--warm` and `--cold` say how you applied. That split is one of the few
+comparisons in the funnel with an effect large enough to show up on a small
+sample.
+
+## From the other surfaces
+
+The same thing, from an MCP client or Slack:
+
+```
+submission_console    # build it
+mark_submitted        # record what went out
+```
+
+All three surfaces call the same code. They cannot disagree about what a
+submitted application is.
+
+## There is no submit button
+
+Not an omission, a decision, and the one almost everything else here is
+downstream of ([ADR
+0012](/decisions/0012-autopilot-draft-human-send/)). Three reasons:
+
+- **Terms.** Some applications have terms about automated submission.
+- **Trust.** One bad model day becomes thirty broken applications, sent.
+- **Signal.** A recruiter's read of a personal application is part of what
+  you are sending. Automating it away removes the thing that works.
+
+karani prepares everything. You press submit.
+
+## Next
+
+- [The inbox watcher](/guides/watcher/) — what happens when they reply.
+- [Conversion analytics](/guides/analytics/) — what the write-back bought
+  you.

@@ -1,0 +1,157 @@
+---
+title: "Installation"
+description: "pip install karani, then karani init. No database, no API key and no Docker needed to run the first pass."
+---
+
+# Installation
+
+<Lede>
+One command, then a wizard. karani runs end to end with **no external
+services at all** and upgrades piecewise from there.
+</Lede>
+
+```bash
+uv tool install karani     # or: pip install karani
+karani init                # interactive: writes karani.toml
+karani config check        # see what it resolved to
+```
+
+That is enough to run a hunt. Everything else on this page is an upgrade.
+
+<Note kind="tip" title="Install it as a tool, not into a project venv">
+
+If you are going to schedule it, `uv tool install` is the right form and a
+project `.venv` is the wrong one. A routine `find ~ -name .venv | xargs rm
+-rf` deleted karani's venv once and the scheduler ran silently at exit 127
+for eight days ([ADR 0018](/decisions/0018-out-of-process-liveness/)). An
+editable tool install tracks source edits; a **dependency** change needs
+`uv tool install --force --editable ...` again.
+
+</Note>
+
+## What you need
+
+**Python 3.11 or newer.** No compiler, no Rust toolchain, no system
+libraries. karani is pure Python and the wheel carries everything the core
+pipeline needs.
+
+**A resume, as markdown.** This is the one file that is genuinely required,
+because it is what every qualification and every draft is written against:
+
+```bash
+cp data/resume.md.example data/resume.md   # then edit it
+```
+
+Keep it in markdown rather than exporting a PDF. karani reads it as text,
+hashes it, and re-judges every stored posting when the hash changes — so
+editing your resume is how you re-run the whole shortlist.
+
+**Nothing else.** With no `DATABASE_URL` set, karani uses an in-memory
+store, which is a real code path rather than a test shim ([ADR
+0006](/decisions/0006-in-memory-storage-fallback/)): it is how you try the
+pipeline before deciding you want it. State does not survive the process,
+which is the only catch.
+
+## Secrets
+
+Every credential comes from the environment, never from `karani.toml`
+([CLAUDE.md
+4.8](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)):
+
+```bash
+cp .env.example .env
+```
+
+Nothing in `.env` is required to run a pass. Set what you actually want:
+
+| Variable | When you need it |
+|---|---|
+| `DATABASE_URL` | To keep state between runs. Any Postgres. |
+| `OPENROUTER_API_KEY` | To qualify or draft on a hosted model. Not needed if you run local. |
+| `ANTHROPIC_API_KEY` | Only with `provider = "anthropic"`. |
+| `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | For the Slack surface. |
+| `NOTION_TOKEN` | For the Notion mirror. |
+| `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | For the inbox watcher. |
+
+The full list is in [Environment variables](/reference/environment/).
+
+## Optional extras
+
+Each one is a `pip` extra, and each is genuinely optional: karani degrades
+rather than failing when a feature's dependency is absent.
+
+```bash
+uv sync --extra slack           # the two-way Slack listener (Socket Mode)
+uv sync --extra orchestrator    # LangGraph, for the scheduled hourly pass
+uv sync --extra artifacts       # MinIO/S3 object storage for the documents
+uv sync --extra memory          # mem0 + pgvector semantic recall
+uv sync --extra anthropic       # the Anthropic SDK, for provider = "anthropic"
+uv sync --extra gmail           # only the one-time OAuth consent flow
+uv sync --extra dev             # pytest and ruff
+```
+
+Installing everything at once, which is what the scheduler wants:
+
+```bash
+uv tool install --editable ".[slack,orchestrator,artifacts,memory,anthropic]"
+```
+
+<Note kind="note" title="The gmail extra is only for consent">
+
+`karani watch --authorize` needs it once to run the OAuth flow. Reading the
+mailbox afterwards is plain `httpx` against a read-only scope, so the extra
+is not needed again.
+
+</Note>
+
+## Infrastructure, if you want it
+
+Postgres with pgvector, and optionally a local model server, as disposable
+local containers:
+
+```bash
+karani infra up                        # Postgres + pgvector on :5433
+karani infra up --profile local-llm    # and Ollama on :11434
+karani infra down                      # stop; volumes persist
+```
+
+Then point the DSN at it:
+
+```bash
+DATABASE_URL=postgresql://karani:karani@localhost:5433/karani
+```
+
+Any Postgres works — a managed one is fine, and the DSN is the only switch.
+See [Infrastructure](/operations/infrastructure/) for the shape of it, and
+the important caveat about **not** running Ollama in Docker on a Mac.
+
+## Check it
+
+```bash
+karani config check     # resolved config, including which model runs each task
+karani stats            # database counts; proves the DSN works
+karani run              # one free pass over every source
+```
+
+`karani run` calls no model, so it is the safe thing to run first. If it
+fetches a few hundred postings and drops most of them, everything works.
+
+## From source
+
+```bash
+git clone https://github.com/cod3smith/karani
+cd karani
+uv sync --extra dev
+cp .env.example .env
+cp data/resume.md.example data/resume.md
+uv run pytest tests -q
+```
+
+The default suite is deterministic — no network, no clock, no model calls —
+and runs in about forty seconds. The Postgres-backed SQL has its own suite,
+`make test-pg`, which skips when the compose database is down.
+
+## Next
+
+[Say what to hunt](/start/configure/), then [run your first
+pass](/start/first-hunt/).

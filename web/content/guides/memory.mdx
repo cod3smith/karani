@@ -1,0 +1,155 @@
+---
+title: "Memory"
+description: "A deterministic ledger in Postgres is the system of record; the semantic index over it is derived and disposable. Recalled facts go into the qualification prompt."
+---
+
+# Memory
+
+<Lede>
+karani retains what it learns and uses it at decision time. One invariant
+holds the whole design together: **the ledger is the system of record, and
+the semantic index is derived and disposable.**
+</Lede>
+
+```bash
+karani remember "Their screen asked about incident ownership" \
+  --kind question --company "Northwind Robotics"
+karani recall "incident ownership" --limit 5
+```
+
+## Three layers
+
+### The ledger — always on, deterministic
+
+Two kinds of ground truth in Postgres.
+
+**Structured events** the pipeline already keeps: verdicts, outcomes,
+stages, fit scores, prompt versions. These feed the few-shot block in the
+qualify prompt and the conversion funnel directly. They are memory, just
+not phrased as prose.
+
+**The `memories` table**: distilled, human-readable facts, one per row.
+Append-only with soft deletes, and an exact-duplicate write dedupes to a
+timestamp touch rather than a second row.
+
+| Kind | Example | Written by |
+|---|---|---|
+| `preference` | "Verdict `skip` on a fintech backend role at fit 82" | automatically, on a verdict |
+| `outcome` | "Application outcome `offer` at Northwind Robotics" | automatically, on an outcome |
+| `company` | "Their recruiter replied within three days" | you, or an agent |
+| `strategy` | "Platform positioning beat the causal-ML angle for infra roles" | you, or an agent |
+| `question` | "Their screen asked about incident ownership" | you, or an agent |
+
+### The semantic index — optional
+
+```
+KARANI_MEMORY=mem0
+```
+
+mem0 over pgvector, layered on the ledger. Every non-deduped write also
+goes to mem0, which handles extraction, conflict resolution and embedding.
+Recall becomes semantic search: *"how fast do handbook-first companies
+reply?"* finds the recruiter fact without sharing a keyword with it.
+
+Extraction and embeddings run on a local model, so the memory layer costs
+zero tokens.
+
+The vector store reads its own DSN, separate from `DATABASE_URL` on
+purpose: the ledger can live in a managed Postgres while the disposable
+index stays local.
+
+### Working context — per decision
+
+At decision time, karani builds a query from the company, the title and the
+role category, retrieves the top few facts (five by default, hard-capped at
+ten in the prompt), and renders them as a block with an explicit
+instruction: **memories are context; they never override a dealbreaker in
+the posting itself.**
+
+That shipped as its own prompt version, so memory-influenced
+qualifications are distinguishable from pre-memory rows in the funnel. The
+memory layer's own effect is measurable rather than assumed.
+
+## The invariant
+
+> Drop the vector collection and nothing is lost.
+
+Recall degrades to deterministic keyword matching until the index is
+rebuilt. Any mem0 failure — extra not installed, local model down, vector
+store unreachable — logs a warning and falls back to `basic`. Writes still
+land in the ledger.
+
+A memory outage can never lose data and can never kill a qualify batch
+([ADR 0009](/decisions/0009-memory-architecture/)).
+
+```bash
+karani reindex    # replay the ledger into a fresh index
+```
+
+## When memory is written
+
+1. **A verdict** — a `preference` fact with the fit score, scoped to the
+   company.
+2. **An outcome** — an `outcome` fact. The strongest signal class there is.
+3. **Deliberate teaching** — `karani remember`, or the MCP `remember` tool.
+   This is the API for "an agent learned something about this company
+   somewhere else and is telling karani."
+4. **A correction** — soft-delete the wrong fact and write the corrected
+   one as a new row. The history stays auditable.
+
+**Never auto-extracted from arbitrary model output.** Writes happen on
+explicit events or deliberate teaching, so junk cannot accumulate silently
+— which is the failure mode of every memory system that extracts from
+everything.
+
+## When it is read
+
+- **Qualification**, single-turn and agent mode alike: per-posting recall,
+  injected as a prompt block.
+- **On demand**: `karani recall`, or the MCP `recall` tool.
+
+## Scoping
+
+Company-scoped recall returns that company's facts **plus** the unscoped
+ones, because a global preference applies everywhere. Another company's
+facts are excluded.
+
+Deterministic ranking is stopword-filtered, word-anchored token overlap,
+with a boost when the memory's company appears in the query and recency as
+the tiebreak. That is what the tests run against, which is why it is
+deterministic rather than good.
+
+## Modes
+
+```
+KARANI_MEMORY=off | basic | mem0      # default: basic
+```
+
+`basic` works on the in-memory store with no infrastructure at all. For the
+full stack:
+
+```bash
+karani infra up --profile local-llm
+uv sync --extra memory
+uv run python -m spacy download en_core_web_sm
+KARANI_MEMORY=mem0
+```
+
+<Note kind="note" title="The spaCy model is a separate download">
+
+mem0 lemmatises with spaCy, and without the model every memory call logs
+`Failed to load spaCy lemma model`. The `memory` extra installs spaCy; the
+model is published as a URL rather than on PyPI, and a direct-URL
+dependency does not belong in a package other people install. Recall
+degrades rather than failing without it, so this is a warning to clear
+rather than an outage.
+
+</Note>
+
+## What memory is not for
+
+- Not a cache of job descriptions. The jobs table already is one.
+- Not auto-extraction from every model response.
+- Not a place for secrets or credentials, ever.
+- Not fine-tuning by another name. Memory is few-shot context plus
+  measurement, and the verdict loop is the eval.

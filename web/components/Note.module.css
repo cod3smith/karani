@@ -1,0 +1,96 @@
+.note {
+  margin-block: 1.8em;
+  padding: 0.95rem 1.15rem 1rem;
+  border: 1px solid var(--ka-rule);
+  border-radius: var(--ka-radius-lg);
+  background: var(--ka-paper-raised);
+  box-shadow: inset 3px 0 0 0 var(--ka-ink-faint);
+  max-width: var(--ka-measure);
+}
+
+/*
+ * The default callout is neutral on purpose. The brand blue is the link
+ * colour and the `drafted` status colour, so a brand-tinted default -- the
+ * most common element on the site -- would have competed with both. A grey
+ * rule on a sunken sheet reads as an aside and nothing more. Only warning,
+ * tip and caution carry a signal.
+ */
+.note[data-kind='note'] {
+  border-color: var(--ka-rule);
+  background: var(--ka-paper-sunken);
+  box-shadow: inset 3px 0 0 0 var(--ka-rule-strong);
+  color: var(--ka-ink);
+}
+
+.note[data-kind='warning'] {
+  border-color: var(--ka-refuse-rule);
+  background: var(--ka-refuse-soft);
+  box-shadow: inset 3px 0 0 0 var(--ka-refuse);
+}
+
+.note[data-kind='tip'] {
+  border-color: var(--ka-agree-rule);
+  background: var(--ka-agree-soft);
+  box-shadow: inset 3px 0 0 0 var(--ka-agree);
+}
+
+.note[data-kind='caution'] {
+  border-color: var(--ka-notice-rule);
+  background: var(--ka-notice-soft);
+  box-shadow: inset 3px 0 0 0 var(--ka-notice);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75ch;
+  flex-wrap: wrap;
+  margin: 0 0 0.35em !important;
+  font-family: var(--ka-font-ui) !important;
+  font-size: 0.95rem !important;
+  line-height: 1.45 !important;
+}
+
+.label {
+  font-family: var(--ka-font-mono);
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  padding-top: 0.22em;
+  flex: none;
+}
+
+.note[data-kind='note'] .label {
+  color: var(--ka-ink-muted);
+}
+.note[data-kind='warning'] .label {
+  color: var(--ka-refuse);
+}
+.note[data-kind='tip'] .label {
+  color: var(--ka-agree);
+}
+.note[data-kind='caution'] .label {
+  color: var(--ka-notice);
+}
+
+.title {
+  font-weight: 620;
+  letter-spacing: -0.012em;
+  color: var(--ka-ink);
+}
+
+/* Callout prose is set a notch smaller than body prose, so an aside reads as
+   an aside without needing a smaller colour contrast. */
+.body > :is(p, ul, ol) {
+  font-size: 1.0625rem !important;
+  margin-block: 0.6em !important;
+}
+
+.body > :first-child {
+  margin-top: 0 !important;
+}
+
+.body > :last-child {
+  margin-bottom: 0 !important;
+}

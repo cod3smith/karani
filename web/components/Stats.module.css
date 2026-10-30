@@ -1,0 +1,60 @@
+.row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 1px;
+  margin-block: 2em;
+  background: var(--ka-rule);
+  border: 1px solid var(--ka-rule);
+  border-radius: var(--ka-radius-lg);
+  overflow: hidden;
+}
+
+.stat {
+  background: var(--ka-paper-raised);
+  padding: 1.1rem 1.2rem 1.15rem;
+}
+
+/*
+ * A measured figure, set the way a newspaper sets a headline number: in the
+ * display face at 400, sized up so the numbers are the loudest thing in the
+ * cell while a four-digit figure still sits well inside the 10rem minimum.
+ * Lining and tabular figures are asked for by name -- the display face's
+ * default numerals are not guaranteed to be either, and these must align
+ * down a row of stats.
+ */
+.value {
+  font-family: var(--ka-font-display);
+  font-size: 2.25rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--ka-ink);
+}
+
+.stat[data-tone='agree'] .value {
+  color: var(--ka-agree);
+}
+
+.stat[data-tone='notice'] .value {
+  color: var(--ka-notice);
+}
+
+.label {
+  font-family: var(--ka-font-ui);
+  font-size: 0.8125rem;
+  font-weight: 540;
+  letter-spacing: 0.005em;
+  color: var(--ka-ink);
+  margin-top: 0.45rem;
+  line-height: 1.35;
+}
+
+/* Where the number came from. Always present on a real measurement. */
+.note {
+  font-family: var(--ka-font-mono);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--ka-ink-faint);
+  margin-top: 0.4rem;
+}

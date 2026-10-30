@@ -1,0 +1,69 @@
+---
+title: "Licence"
+description: "karani is MIT licensed. What that means for the code, and what it does not cover."
+---
+
+# Licence
+
+<Lede>
+karani is MIT licensed. Use it, fork it, change it, ship it — keep the
+notice.
+</Lede>
+
+The authoritative text is
+[`LICENSE`](https://github.com/cod3smith/karani/blob/main/LICENSE) in the
+repository.
+
+```
+MIT License
+
+Copyright (c) 2026 Kelyn Paul Njeri
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## What the licence does not cover
+
+**The services karani talks to have their own terms.** Job boards, ATS
+APIs, model providers, Slack, Notion, Google. karani reads public endpoints
+and holds a read-only mail scope, but how you use it is between you and
+them.
+
+**Postings are not karani's to license.** Job descriptions belong to the
+companies that wrote them. karani stores them locally so it can filter and
+qualify them; that is not a licence to republish them.
+
+**What you send is yours.** karani drafts; you sign and submit. Every claim
+in a pack traces back to a record you wrote, and the attestations on an
+application form are derived from facts you declared — because they are
+attestations you are accountable for, not karani ([ADR
+0023](/decisions/0023-submission-console-and-write-back/)).
+
+## Examples on this site
+
+Every posting, company, person and transcript in these pages is
+**fabricated**. The candidate is Ada Mwangi, who does not exist. The
+companies are Northwind Robotics, Helix Data, Meridian Labs and Calderwood
+Health, none of which exists either, and the application URLs on their
+postings resolve to nothing.
+
+That is a build gate rather than a promise: the fabricated names live in one
+module, and a check over the built output fails if anything from a real
+resume reaches a page. The repository is public and so are these docs, so
+there was no version of this worth doing by hand.

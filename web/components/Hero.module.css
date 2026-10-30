@@ -1,0 +1,148 @@
+.hero {
+  /* `isolate` gives the hero its own stacking context, so the atmosphere can
+     sit behind the text without sinking behind the page. The hero itself must
+     not clip: a focusable control at its edge would lose its focus ring. */
+  position: relative;
+  isolation: isolate;
+  padding-block: 1rem 0.5rem;
+  border-bottom: 1px solid var(--ka-rule);
+  margin-bottom: 2.4rem;
+  padding-bottom: 2.2rem;
+}
+
+/* The aurora is absolutely positioned and blurred 60px, so its parent must
+   clip it or the blur scrolls the page sideways. That parent is this wrapper,
+   which holds nothing else, so the clip cannot reach a focusable descendant. */
+.atmosphere {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Status, set in mono so it reads as a fact rather than a badge. The same
+   10px, 0.28em, brand-coloured eyebrow as `.ka-eyebrow` and the section
+   markers; this module cannot take the global class, so it restates it. */
+.eyebrow {
+  font-family: var(--ka-font-mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ka-brand);
+  margin: 0 0 1.1rem !important;
+  display: flex;
+  gap: 1.1ch;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* The display face at 400, as `.ka-display` and the h1 are. The tracking is
+   the display face's -0.02em. */
+.title {
+  font-family: var(--ka-font-display);
+  font-size: clamp(2.35rem, 1.5rem + 3.2vw, 3.65rem) !important;
+  font-weight: 400;
+  letter-spacing: -0.02em !important;
+  line-height: 1.08 !important;
+  margin: 0 0 1.1rem !important;
+  max-width: 24ch;
+  border-top: none !important;
+  padding-top: 0 !important;
+  text-wrap: balance;
+}
+
+.lede > p {
+  font-family: var(--ka-font-prose);
+  font-size: 1.3125rem !important;
+  line-height: 1.52 !important;
+  letter-spacing: -0.012em;
+  color: var(--ka-ink-muted);
+  max-width: 60ch;
+  margin-block: 0 0.9em !important;
+}
+
+.lede strong {
+  color: var(--ka-ink);
+  font-weight: 600;
+}
+
+/* ---- Actions ---- */
+
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 1.6rem;
+}
+
+.primary,
+.secondary {
+  font-family: var(--ka-font-ui);
+  font-size: 0.9375rem;
+  font-weight: 560;
+  letter-spacing: -0.008em;
+  padding: 0.56rem 1.05rem;
+  border-radius: var(--ka-radius);
+  text-decoration: none !important;
+  border: 1px solid transparent;
+  transition: background-color 130ms ease, border-color 130ms ease, color 130ms ease;
+}
+
+.primary {
+  background: var(--ka-ink);
+  color: var(--ka-paper) !important;
+}
+
+.primary:hover {
+  background: var(--ka-brand);
+}
+
+.secondary {
+  border-color: var(--ka-rule-strong);
+  color: var(--ka-ink) !important;
+}
+
+.secondary:hover {
+  border-color: var(--ka-ink-faint);
+  background: var(--ka-paper-raised);
+}
+
+/* ---- Bands ---- */
+
+.band {
+  margin-block: 3.4rem;
+}
+
+.bandLabel {
+  font-family: var(--ka-font-mono) !important;
+  font-size: 11px !important;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ka-ink-muted);
+  margin: 0 0 0.5rem !important;
+}
+
+.bandTitle {
+  font-family: var(--ka-font-display);
+  font-size: 1.9rem !important;
+  font-weight: 400;
+  letter-spacing: -0.02em !important;
+  line-height: 1.16 !important;
+  margin: 0 0 1rem !important;
+  max-width: 34ch;
+  border-top: none !important;
+  padding-top: 0 !important;
+}
+
+/* The landing page is not a numbered section of the record: it has no
+   sidebar or contents list (content/_meta.ts gives it layout: 'full'), and a
+   band heading is a heading on a poster, not entry N of a ledger. This
+   removes the global `No. NN` marker from the band's h2 and, because a
+   pseudo-element that is not generated cannot increment, keeps the counter
+   from advancing. `.band .bandTitle` outranks `article main h2::before`. */
+.band .bandTitle::before {
+  content: none;
+  counter-increment: none;
+}

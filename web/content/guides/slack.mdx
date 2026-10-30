@@ -1,0 +1,128 @@
+---
+title: "Slack"
+description: "Review cards with buttons, and the same verbs back as text. The surface where you approve a pack from your phone."
+---
+
+# Slack
+
+<Lede>
+karani pushes to Slack and takes commands back. It is the surface that
+makes the hourly hunt useful, because a pack nobody sees is a pack nobody
+sends.
+</Lede>
+
+```bash
+karani notify --kind digest     # push the shortlist
+karani notify --kind actions    # push the worklist
+karani slack                    # the two-way listener
+```
+
+## Two halves, two dependencies
+
+The **push** half is `httpx` only and works from cron with nothing extra.
+That is deliberate: delivery is the part the scheduler depends on, so it
+has the fewest moving pieces.
+
+The **pull** half — the listener, over Socket Mode — needs an extra:
+
+```bash
+uv sync --extra slack
+karani slack
+```
+
+## Review cards
+
+The hourly pass drafts packs for new top-fit roles and posts each as a
+card: the summary, the cover letter, the voice score from the humanizer,
+presigned links to the rendered documents, and four buttons.
+
+| Button | What it does |
+|---|---|
+| *Approve pack* | Marks it `ready` and links the posting |
+| *Skip role* | Records a `skip` verdict; feeds the taste calibration |
+| *I applied (warm)* | Status `applied`, warm path |
+| *I applied (cold)* | Status `applied`, cold path |
+
+Approve, then open the portal and submit it yourself, then press *I
+applied*. Every click records a verdict, feeds the memory ledger, and
+updates the Notion board.
+
+There is no button that submits ([ADR
+0012](/decisions/0012-autopilot-draft-human-send/)).
+
+<Note kind="note" title="Buttons need one extra toggle">
+
+In the Slack app config: **Interactivity & Shortcuts → On**. No Request URL
+is needed under Socket Mode, but the toggle still has to be on or the
+buttons do nothing.
+
+</Note>
+
+## Quiet by design
+
+An hour with no new high-fit roles posts nothing. Summary pushes — the
+digest and the worklist — stay on a twice-daily schedule so the channel is
+not a feed.
+
+That is the difference between a tool you keep and a tool you mute.
+
+## The verbs
+
+In the channel or a DM, the same verbs the CLI has:
+
+```
+actions                 digest
+verdict 1482 apply      status 1482 applied
+draft 1482              prep 1482
+followup 1482           intel Northwind Robotics
+warm Northwind Robotics remember <fact>
+recall <query>          sync
+help
+```
+
+`commands.py` maps these onto the same storage, runner and memory calls the
+CLI and the MCP server use — a third thin adapter, same rule ([ADR
+0010](/decisions/0010-slack-two-way-surface/)).
+
+## Setup
+
+A Slack app with:
+
+- **Socket Mode** on → `SLACK_APP_TOKEN` (`xapp-...`)
+- Bot scopes `chat:write` and `im:history` → `SLACK_BOT_TOKEN` (`xoxb-...`)
+- Event subscription: `message.im`
+- Interactivity: on (for the buttons)
+
+Then in `.env`:
+
+```
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+SLACK_CHANNEL=C01234567
+```
+
+And in `karani.toml`:
+
+```toml
+[slack]
+channel = "C01234567"
+allowed_users = []    # empty = everyone
+```
+
+<Note kind="caution" title="An empty allowlist allows everyone">
+
+That is correct for a single-user DM and wrong for a shared channel. These
+verbs spend money (`draft`, `prep`) and change state (`status`,
+`outcome`), so in anything but your own DM, name the users.
+
+</Note>
+
+## Delivery never sinks a pass
+
+Every delivery step is best-effort. An unconfigured channel, an expired
+token, a brief Slack outage — each logs and the pass continues. A pipeline
+run that fetched 1,600 postings and qualified twenty should not be recorded
+as a failure because a webhook timed out.
+
+The corollary: a Slack push failing is not loud. If cards stop arriving,
+check the log rather than waiting for an alert.

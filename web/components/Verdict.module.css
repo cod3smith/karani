@@ -1,0 +1,315 @@
+/*
+ * The qualification plate.
+ *
+ * A raised sheet inside a hairline frame, with a labelled bar across the top
+ * and a figure number in that bar's left corner -- the same plate shape as
+ * RunReport, so the two read as the same kind of record.
+ *
+ * The frame is neutral. What carries the verdict is the 3px rule down the
+ * left edge and the word in the bar, and nothing else: tinting the bar and
+ * the border as well would be three statements of the same thing and would
+ * leave no colour spare for the rest of the page.
+ */
+
+.panel {
+  margin-block: 1.8em;
+  border: 1px solid var(--ka-rule);
+  border-radius: var(--ka-radius-lg);
+  background: var(--ka-paper-raised);
+  overflow: hidden;
+  box-shadow: inset 3px 0 0 0 var(--ka-ink-faint);
+}
+
+.panel[data-verdict='qualified'] {
+  box-shadow: inset 3px 0 0 0 var(--ka-agree);
+}
+
+.panel[data-verdict='maybe'] {
+  box-shadow: inset 3px 0 0 0 var(--ka-notice);
+}
+
+.panel[data-verdict='skip'] {
+  box-shadow: inset 3px 0 0 0 var(--ka-refuse);
+}
+
+/* ---- Top bar ---- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 1rem 0.6rem 1.15rem;
+  background: var(--ka-paper-sunken);
+  border-bottom: 1px solid var(--ka-rule);
+  font-family: var(--ka-font-mono);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+/* The figure label is global (`.ka-figure`, counted in globals.css) and is
+   only positioned here: a plate number, divided from the bar's content by a
+   hairline, that stays on its own rather than wrapping with the note. */
+.bar > :global(.ka-figure) {
+  flex: none;
+  line-height: 1.5;
+}
+
+/* The divider and its gap exist to separate the label from what follows, so
+   a label with nothing after it has neither. */
+.bar > :global(.ka-figure):not(:last-child) {
+  padding-right: 1rem;
+  border-right: 1px solid var(--ka-rule);
+}
+
+.barLeft,
+.barRight {
+  display: flex;
+  align-items: center;
+  gap: 0.8ch;
+  flex-wrap: wrap;
+}
+
+/* The left group takes the slack, so the figure label, the verdict and the
+   note sit at the left, middle and right rather than being spread by
+   justify-content. */
+.barLeft {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.verdict {
+  font-weight: 650;
+  letter-spacing: 0.005em;
+  color: var(--ka-ink-faint);
+}
+
+.panel[data-verdict='qualified'] .verdict {
+  color: var(--ka-agree);
+}
+
+.panel[data-verdict='maybe'] .verdict {
+  color: var(--ka-notice);
+}
+
+.panel[data-verdict='skip'] .verdict {
+  color: var(--ka-refuse);
+}
+
+/* The score is the number people compare, so it is tabular and set in the
+   ink rather than in the verdict colour: the word already said that part,
+   and a fit score only means anything within one model and prompt version
+   (ADR 0022), which the plate's foot names. */
+.score {
+  color: var(--ka-ink);
+  font-weight: 650;
+  font-variant-numeric: lining-nums tabular-nums;
+  border: 1px solid var(--ka-rule-strong);
+  border-radius: 3px;
+  padding: 0.05em 0.4em;
+}
+
+.outOf {
+  color: var(--ka-ink-faint);
+  font-weight: 400;
+}
+
+.job {
+  color: var(--ka-ink-muted);
+  min-width: 0;
+}
+
+.at {
+  color: var(--ka-ink-faint);
+}
+
+.note {
+  color: var(--ka-ink-muted);
+}
+
+/* ---- Body ---- */
+
+.body {
+  padding: 1rem 1.15rem 1.05rem;
+}
+
+.block {
+  margin-bottom: 1.1rem;
+}
+
+.heading {
+  font-family: var(--ka-font-mono) !important;
+  font-size: 0.68rem !important;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ka-ink-faint);
+  margin: 0 0 0.5rem !important;
+}
+
+/* A claim and the evidence under it. The evidence is the load-bearing half:
+   karani drops a strength whose quote it cannot find, so showing the two
+   together is showing the rule being kept. */
+.claims {
+  margin: 0;
+}
+
+.claim {
+  margin-bottom: 0.7rem;
+  padding-left: 0.85rem;
+  border-left: 1px solid var(--ka-rule);
+}
+
+.claim:last-child {
+  margin-bottom: 0;
+}
+
+.claim dt {
+  font-family: var(--ka-font-ui);
+  font-size: 0.95rem;
+  font-weight: 560;
+  line-height: 1.4;
+  color: var(--ka-ink);
+  display: flex;
+  gap: 0.75ch;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.claim dd {
+  margin: 0.25rem 0 0;
+  font-family: var(--ka-font-prose);
+  font-size: 0.9375rem !important;
+  line-height: 1.5 !important;
+  color: var(--ka-ink-muted);
+}
+
+/* Evidence is a quotation from the resume, so it is marked as one. Real
+   quotation marks rather than the typewriter pair, and tight against the
+   text: a space either side reads as a stray character at this size. */
+.claim dd::before {
+  content: '\201C';
+  color: var(--ka-ink-faint);
+}
+
+.claim dd::after {
+  content: '\201D';
+  color: var(--ka-ink-faint);
+}
+
+/* A gap's mitigation is advice, not a quotation. */
+.claim[data-severity] dd::before,
+.claim[data-severity] dd::after {
+  content: none;
+}
+
+.severity {
+  font-family: var(--ka-font-mono);
+  font-size: 0.62rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+  border: 1px solid var(--ka-rule-strong);
+  color: var(--ka-ink-faint);
+  flex: none;
+}
+
+.claim[data-severity='high'] .severity {
+  color: var(--ka-refuse);
+  border-color: var(--ka-refuse-rule);
+  background: var(--ka-refuse-soft);
+}
+
+.claim[data-severity='medium'] .severity {
+  color: var(--ka-notice);
+  border-color: var(--ka-notice-rule);
+  background: var(--ka-notice-soft);
+}
+
+.claim[data-severity='low'] .severity {
+  color: var(--ka-ink-muted);
+}
+
+.claim[data-severity='high'] {
+  border-left-color: var(--ka-refuse-rule);
+}
+
+.flags {
+  margin: 0 !important;
+  padding-left: 1.2em !important;
+}
+
+.flags li {
+  font-family: var(--ka-font-prose);
+  font-size: 0.9375rem !important;
+  line-height: 1.5 !important;
+  color: var(--ka-refuse);
+}
+
+.prose {
+  margin: 0 !important;
+  font-family: var(--ka-font-prose);
+  font-size: 0.9375rem !important;
+  line-height: 1.55 !important;
+  color: var(--ka-ink-muted);
+  max-width: none !important;
+}
+
+/* The line that says what to do about it: the only line in the body allowed
+   to be set in the ink at full weight. */
+.reason {
+  display: flex;
+  gap: 0.8ch;
+  align-items: baseline;
+  margin: 0 !important;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--ka-rule);
+  font-family: var(--ka-font-ui) !important;
+  font-size: 0.9375rem !important;
+  line-height: 1.5 !important;
+  font-weight: 560;
+  color: var(--ka-ink) !important;
+  max-width: none !important;
+}
+
+.arrow {
+  flex: none;
+  color: var(--ka-ink-faint);
+}
+
+.panel[data-verdict='qualified'] .arrow {
+  color: var(--ka-agree);
+}
+
+.panel[data-verdict='maybe'] .arrow {
+  color: var(--ka-notice);
+}
+
+.panel[data-verdict='skip'] .arrow {
+  color: var(--ka-refuse);
+}
+
+/* ---- Provenance ----
+   A fit score is only comparable within the model and prompt version that
+   produced it (ADR 0022), so the plate always says which. */
+
+.foot {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 1.15rem 0.6rem;
+  border-top: 1px solid var(--ka-rule);
+  background: var(--ka-paper-sunken);
+  font-family: var(--ka-font-mono);
+  font-size: 0.7rem;
+  color: var(--ka-ink-faint);
+}
+
+@media (max-width: 640px) {
+  .score {
+    order: -1;
+  }
+}

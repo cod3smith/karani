@@ -1,0 +1,128 @@
+/*
+ * karani design tokens.
+ *
+ * The palette is not invented here. karani's one real interface is the
+ * submission console (karani/submission/console.py), a dark sheet with a
+ * sky-blue accent that gets used on a phone at midnight to clear an
+ * application queue. The docs take that palette so the site and the product
+ * look like the same thing:
+ *
+ *   console          here
+ *   --bg  #0b0d10    --ka-paper (dark)
+ *   --card #14171b   --ka-paper-raised (dark)
+ *   --text #e6e8ea   --ka-ink (dark)
+ *   --accent #7dd3fc --ka-brand (dark)
+ *   --ok  #34d399    --ka-agree (dark)
+ *   --warn #fbbf24   --ka-notice (dark)
+ *
+ * Four signal colours, each meaning exactly one thing:
+ *
+ *   brand   navigation, links, "karani did this"
+ *   refuse  a hard filter veto, a rejection, a thing karani will not do
+ *   agree   a qualified role, a check that passed, an offer
+ *   notice  needs review: a flagged answer, a sample too small to call
+ *
+ * Dark is what a visitor arrives in (the default is set in layout.tsx),
+ * because that is what the console is. Light is kept and fully retuned:
+ * these pages carry long reference tables and people print them.
+ * `:root` stays the light theme and `.dark` the dark one — that is the
+ * class contract the theme toggle depends on, whatever the default is.
+ *
+ * Brand owns hue 200 (sky). The other signals sit far from it: refuse is a
+ * red near 0, agree a green near 160, notice an amber near 45. Blue has the
+ * luxury of being nowhere near any of them, which is why this palette does
+ * not have the brand-versus-notice problem an orange-led one does.
+ * scripts/check-contrast.mjs still holds brand 25 degrees clear of notice
+ * and refuse, because a future recolour is the thing that breaks it.
+ *
+ * Light-mode brand is much darker than the console accent. #7dd3fc is 1.6:1
+ * on white, so the light theme takes the same hue at a far lower lightness.
+ * Dark mode uses the console's accent hex exactly, and the SVG marks
+ * (icon.svg, favicon.svg) carry it too.
+ *
+ * Every -soft and -rule value is an opaque colour, blended from its signal
+ * onto the surface it sits on, so the contrast gate can measure it. Only the
+ * dark theme's two hairline rules are translucent, because they are not text.
+ *
+ * `npm run contrast` reads this file and fails the build if any colour used
+ * as text drops below 4.5:1 on any surface it can sit on. The numbers here
+ * are not a claim, they are a gate.
+ */
+
+:root {
+  /* ---- Neutrals: cool paper, near-black ink ---- */
+  --ka-paper: #f6f7f9;
+  --ka-paper-raised: #ffffff;
+  --ka-paper-sunken: #eceff2;
+  --ka-ink: #0b0d10;
+  --ka-ink-muted: #4e565f;
+  --ka-ink-faint: #616a73;
+  --ka-rule: #dde2e7;
+  --ka-rule-strong: #c0c7ce;
+
+  /* ---- Signal colours ---- */
+  --ka-brand: #0a5c82;
+  --ka-brand-hover: #07435f;
+  --ka-brand-soft: #e8eff4;
+  --ka-brand-rule: #a9c8da;
+
+  --ka-refuse: #ad2318;
+  --ka-refuse-soft: #f4ebea;
+  --ka-refuse-rule: #ddb6b2;
+
+  --ka-agree: #156643;
+  --ka-agree-soft: #e8f0ec;
+  --ka-agree-rule: #b0cdc0;
+
+  --ka-notice: #6f5505;
+  --ka-notice-soft: #f1eee4;
+  --ka-notice-rule: #cfc4a5;
+
+  /* ---- Type ---- */
+  --ka-font-prose: var(--font-source-serif), ui-serif, Georgia, serif;
+  --ka-font-display: var(--font-newsreader), 'Newsreader', Georgia, serif;
+  --ka-font-ui: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --ka-font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+
+  --ka-prose-size: 1.1875rem; /* 19px: a serif needs a little more than sans */
+  --ka-prose-leading: 1.68;
+  --ka-measure: 72ch;
+
+  /* ---- Space ---- */
+  --ka-gutter: 1.5rem;
+  --ka-radius: 4px; /* near-square. Pills read as consumer software. */
+  --ka-radius-lg: 6px;
+
+  /* ---- Depth. Hairlines, not drop shadows. ---- */
+  --ka-shadow-raised: 0 1px 2px rgb(11 13 16 / 0.05), 0 0 0 1px var(--ka-rule);
+}
+
+.dark {
+  --ka-paper: #0b0d10;
+  --ka-paper-raised: #14171b;
+  --ka-paper-sunken: #101316;
+  --ka-ink: #e6e8ea;
+  --ka-ink-muted: #a0a7af;
+  --ka-ink-faint: #868e96;
+  --ka-rule: #ffffff1c;
+  --ka-rule-strong: #ffffff30;
+
+  --ka-brand: #7dd3fc;
+  --ka-brand-hover: #a7e3fd;
+  --ka-brand-soft: #0d1b23;
+  --ka-brand-rule: #1d4255;
+
+  --ka-refuse: #fb8884;
+  --ka-refuse-soft: #231315;
+  --ka-refuse-rule: #4e2425;
+
+  --ka-agree: #34d399;
+  --ka-agree-soft: #10231c;
+  --ka-agree-rule: #1d4536;
+
+  --ka-notice: #fbbf24;
+  --ka-notice-soft: #231d10;
+  --ka-notice-rule: #4c3c14;
+
+  --ka-shadow-raised: 0 0 0 1px var(--ka-rule);
+}

@@ -1,0 +1,94 @@
+---
+title: "The Notion board"
+description: "A one-way mirror of every tracked application, updated on each state change. Postgres stays the source of truth."
+---
+
+# The Notion board
+
+<Lede>
+One page per tracked application, on a board karani owns the schema of.
+It is a mirror and not a second store: nothing karani reads comes from
+Notion.
+</Lede>
+
+```bash
+karani notion init <parent_page_id>   # once; prints NOTION_DATABASE_ID
+karani notion sync                    # full reconcile
+```
+
+## One way, on purpose
+
+Postgres is the source of truth and Notion is a view of it ([ADR
+0011](/decisions/0011-notion-mirror/)). Edit a page on the board and the
+next reconcile overwrites it.
+
+That is the right trade for a board whose job is to be looked at. Two-way
+sync means conflict resolution, and conflict resolution between a database
+and a page somebody half-edited on a phone is a whole subsystem to serve a
+board you mostly read.
+
+Use it for the kanban view, the timeline, and glancing at where things
+stand. Make changes through karani.
+
+## What updates it
+
+Two paths:
+
+- **Live**, after every verdict, status or outcome change — best-effort,
+  no-ops when unconfigured, and never raises.
+- **A full reconcile**, in the scheduled daily run, or whenever you run
+  `karani notion sync`.
+
+The live push is why the board is usually right and the reconcile is why it
+is eventually right.
+
+## Page identity
+
+The Notion page id is stored on the job row: created once, patched after,
+and recreated if Notion returns a 404 because somebody deleted the page.
+
+So deleting a page on the board does not lose anything. The next sync
+rebuilds it.
+
+## Setup
+
+1. Create an internal integration at
+   [notion.so/my-integrations](https://www.notion.so/my-integrations).
+2. Share a parent page with it — Notion's permission model is
+   share-with-the-integration, so this step is not optional.
+3. Put the token in `.env`:
+   ```
+   NOTION_TOKEN=ntn_...
+   ```
+4. Create the database:
+   ```bash
+   karani notion init <parent_page_id>
+   ```
+   It prints the database id. Put it in `karani.toml`:
+   ```toml
+   [notion]
+   database_id = "..."
+   ```
+
+karani owns the schema, so `init` creates the properties it needs rather
+than adapting to a board you built by hand. Point it at an empty parent
+page.
+
+## From the other surfaces
+
+Slack's `sync` verb and the MCP `notion_sync` tool do the same reconcile.
+
+## Delivery never sinks a pass
+
+Like Slack, the Notion push is best-effort: an unconfigured integration or
+a brief API failure logs and the pass continues.
+
+<Note kind="caution" title="Tests must not reach the real board">
+
+karani's test suite strips `NOTION_TOKEN` before any module loads, and
+re-strips it per test. This is not theoretical — a "deterministic" test run
+once created thirty fixture pages on the real board, because
+best-effort integrations read the environment at call time and a developer's
+`.env` was in it.
+
+</Note>

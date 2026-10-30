@@ -1,0 +1,128 @@
+---
+title: "Environment variables"
+description: "Every variable karani reads: the credentials, which live only here, and the one-off overrides for knobs that normally live in karani.toml."
+---
+
+# Environment variables
+
+<Lede>
+Two kinds of thing live here. **Credentials**, which live nowhere else, and
+**overrides**, which beat `karani.toml` for one run.
+</Lede>
+
+`.env.example` is the template. Nothing in it is required to run a pass —
+with no variables set at all, karani uses an in-memory store and a local
+model.
+
+<Note kind="warning" title="Credentials live only here">
+
+No API key, token or DSN ever goes in `karani.toml`. The config file's
+`api_key_env` holds the **name** of a variable, not a key, and the docs
+build fails on a config field whose name looks like a credential
+([CLAUDE.md 4.8](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)).
+
+`data/` and `drafts/` are gitignored, so a fork of the repository never
+carries your details.
+
+</Note>
+
+## Credentials
+
+| Variable | Needed for |
+|---|---|
+| `DATABASE_URL` | Keeping state between runs. Any Postgres DSN. |
+| `OPENROUTER_API_KEY` | `provider = "openrouter"` |
+| `OPENAI_API_KEY` | `provider = "openai"` against the API itself |
+| `ANTHROPIC_API_KEY` | `provider = "anthropic"` |
+| `SLACK_BOT_TOKEN` | Pushing to Slack (`xoxb-...`) |
+| `SLACK_APP_TOKEN` | The Socket Mode listener (`xapp-...`) |
+| `SLACK_CHANNEL` | Which conversation to push to |
+| `NOTION_TOKEN` | The Notion mirror |
+| `GMAIL_CLIENT_ID` | The watcher's OAuth client |
+| `GMAIL_CLIENT_SECRET` | The same |
+| `GMAIL_REFRESH_TOKEN` | Reading the mailbox, read-only |
+| `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` | Object storage for the documents |
+| `MEM0_PG_URL` | The vector store, separate from `DATABASE_URL` on purpose |
+
+A key for a provider you do not use is not needed, and its absence is never
+an error: with no key for the configured provider, karani falls back to the
+local model and says so once ([ADR
+0019](/decisions/0019-hosted-tiers-behind-a-budget/)).
+
+## Overrides
+
+These shadow a `karani.toml` value for one run. Use them for experiments;
+put the answer in the file.
+
+### Model routing
+
+| Variable | Default | Notes |
+|---|---|---|
+| `QUAL_PROVIDER` | from `[llm.qualify]` | Any registered provider name |
+| `QUAL_MODEL` | from `[llm.qualify]` | Provider-specific slug |
+| `QUAL_REASONING_EFFORT` | `high` | `low`, `medium`, `high` |
+| `QUAL_MAX_TOKENS` | `8000` | Completion cap, including reasoning tokens |
+| `QUAL_TIMEOUT_SECONDS` | `180` | Thinking models are slow |
+| `LOCAL_LLM_MODEL` | from `[llm.*]` | For `provider = "local"` |
+| `RESUME_PATH` | `data/resume.md` | Which resume to judge against |
+
+### Filtering
+
+| Variable | Default | Notes |
+|---|---|---|
+| `MIN_COMP_USD` | `160000` | Hard-fail comp floor where disclosed |
+| `TARGET_COMP_USD` | `220000` | Score bonus threshold |
+| `STALE_JOB_DAYS` | `10` | Days unseen before a posting is closed |
+
+### HTTP
+
+| Variable | Default | Notes |
+|---|---|---|
+| `HTTP_TIMEOUT` | `30` | Per request, seconds |
+| `HTTP_CONCURRENCY` | `6` | Global cap |
+| `HTTP_PER_HOST_CONCURRENCY` | `3` | Per host |
+| `USER_AGENT` | `karani/...` | Sent on every request |
+
+### Switches
+
+These turn a behaviour off, and each one exists because the behaviour costs
+something — money, network, or both.
+
+| Variable | Effect |
+|---|---|
+| `KARANI_AUTO_PREP=off` | Stop a `screen`/`interview` status change from building a prep pack. Two model calls, unattended. |
+| `KARANI_ATS_QUESTIONS=off` | Stop the console reading real application forms. It then uses the standard field set and touches no network. |
+| `KARANI_INTEL=off` | Stop company-dossier probes. |
+| `KARANI_MEMORY` | `off`, `basic` (default) or `mem0`. |
+| `KARANI_PASS_DEADLINE_SECONDS` | The hard ceiling on one hunt pass. Default 3000, clamped below the hourly tick ([ADR 0025](/decisions/0025-every-pass-has-a-deadline/)). |
+
+The test suite sets `KARANI_AUTO_PREP` and `KARANI_INTEL` off for the same
+reason it strips every credential: a deterministic test must not spend money
+or reach the network.
+
+### Ollama
+
+Not karani's variables, but karani's behaviour depends on them, and getting
+them wrong is the single most expensive mistake available:
+
+| Variable | Set it to | Why |
+|---|---|---|
+| `OLLAMA_CONTEXT_LENGTH` | `16384` | The 4096 default **silently truncates** a qualification prompt |
+| `OLLAMA_NUM_PARALLEL` | `1` | More than one slot splits the context window, quietly undoing the above |
+
+[Infrastructure](/operations/infrastructure/) has the full story, including
+why `launchctl setenv` does not survive a reboot and what karani installs
+to work around it.
+
+## Resolution order
+
+Loosest first:
+
+1. Schema defaults
+2. `karani.toml`
+3. An environment variable
+4. A command-line flag
+
+```bash
+karani config check   # what it resolved to, per task
+```

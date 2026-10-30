@@ -1,0 +1,187 @@
+---
+title: A job hunt that drafts everything and submits nothing
+description: karani watches nine job boards for the roles you actually want, drops 95% of what it finds on deterministic rules, reads the rest against your resume, writes the application, and hands you the pen.
+sidebarTitle: Home
+---
+
+import { samples } from '../lib/samples.generated'
+
+<Hero
+  masthead
+  eyebrow={<>v0.4 &middot; self-hosted &middot; MIT &middot; Python 3.11+</>}
+  title="Job hunting is a data pipeline problem."
+  actions={
+    <>
+      <Action href="/start/installation/" primary>Install it</Action>
+      <Action href="/start/first-hunt/">Run one pass</Action>
+      <Action href="https://github.com/cod3smith/karani">Source</Action>
+    </>
+  }
+>
+  Nine job boards, thousands of postings a day, and maybe five of them are
+  a role you would take at a company that would pay you properly. Finding
+  those five takes forty-five minutes a day and still misses most of them.
+
+  karani is a clerk for that problem. It reads every posting, drops the
+  ones that fail your rules before any model is called, scores what
+  survives against your actual resume, drafts the whole application —
+  and **hands you the pen**. You press submit. It never does.
+</Hero>
+
+<Band label="What it does with a posting" title="Two tiers, and only one of them costs money">
+
+The first tier is arithmetic. Role family, seniority, geography, remote
+status, comp anchored to a currency keyword, skill overlap against your
+profile — all word-boundary matched, all deterministic, no model involved.
+About 95% of a pass ends here, for free.
+
+<RunReport note="karani run">{samples.transcripts.hunt}</RunReport>
+
+That split is the whole architecture ([ADR
+0001](/decisions/0001-tiered-filter-not-single-llm-pass/)). Running a model
+over every RemoteOK posting would be expensive and no better; running one
+over the two dozen that survived is cheap enough to be worth doing
+carefully.
+
+</Band>
+
+<Band label="What a model is for" title="A verdict you can argue with">
+
+The second tier reads the survivors against your resume and comes back
+with a score, a three-way verdict, and claims about you that each carry
+the line of your own resume behind them.
+
+<Verdict note="karani qualify">{samples.verdicts.qualified}</Verdict>
+
+Every strength has a quote. That is not a prompt asking nicely: a claim
+whose citation karani cannot verify in your own records is **dropped, not
+repaired** ([CLAUDE.md
+4.13](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)), because a
+fabricated story gets probed for ten minutes by someone who interviews for
+a living.
+
+The disagreements are the useful part. When karani says skip and you would
+apply, tell it — `karani verdict 1544 apply` — and that pair becomes a
+few-shot example in the next qualify prompt. Its taste converges on yours
+with no retraining.
+
+</Band>
+
+<Band label="The last mile" title="It fills the form in. You send it.">
+
+`karani console` writes one self-contained HTML file: every pack waiting to
+be sent, each with the apply link, the rendered documents, and a
+field-by-field answer sheet with a copy button on every field. No server,
+no port, no process — it opens from iCloud on a phone, which is where a
+queue actually gets cleared.
+
+<RunReport note="karani console">{samples.transcripts.console}</RunReport>
+
+The sheet answers that job's **real** questions. Greenhouse, Lever and
+Ashby publish their application forms on the same public endpoints karani
+ingests from, so the wording and the option values are the company's own
+rather than a guess at a standard form.
+
+And every answer says where it came from. Work authorization, sponsorship,
+relocation and start date are resolved from legal facts **you declare and
+sign**, by code, never by a model — the same question has opposite correct
+answers depending on the role's shape, so "the model usually gets it
+right" is not a defence ([ADR
+0023](/decisions/0023-submission-console-and-write-back/)). Demographic
+questions are left blank. Anything karani has no source for is flagged
+rather than invented.
+
+</Band>
+
+<Band label="Ways in" title="One pipeline, five front doors">
+
+All five are thin adapters over the same storage and the same runners, so
+they cannot disagree about what a verb does.
+
+<SurfaceGrid>
+  <Surface href="/reference/cli/" name="The command line" invocation="karani run">
+    37 verbs, one entry point. Every one returns an exit code, so each
+    composes into a shell chain.
+  </Surface>
+  <Surface href="/guides/mcp/" name="An MCP client" invocation="karani mcp">
+    27 tools over stdio. Ask your assistant what to do on the job hunt
+    today and it assembles the answer itself.
+  </Surface>
+  <Surface href="/guides/slack/" name="Slack" invocation="karani slack">
+    Review cards with buttons, and the same verbs back as text. Approve a
+    pack from your phone.
+  </Surface>
+  <Surface href="/guides/submission/" name="The console" invocation="karani console">
+    One HTML file with the whole queue in it. The only surface with no
+    network at all.
+  </Surface>
+  <Surface href="/guides/watcher/" name="Your inbox" invocation="karani watch">
+    Reads the replies over a read-only scope and moves the state machine.
+    It cannot send, delete or mark read.
+  </Surface>
+</SurfaceGrid>
+
+</Band>
+
+<Band label="What it costs" title="Billed work degrades. It never halts, and never overspends.">
+
+The reference configuration runs bulk qualification on a local model at
+zero token cost, and keeps a hosted model for drafting — the low-volume
+step where quality is what gets the interview.
+
+<Stats>
+  <Stat value="95%" label="Of a pass ends before any model call" note="deterministic pre-filter" tone="agree" />
+  <Stat value="$0.00" label="Bulk qualification on the reference config" note="local Ollama, ADR 0017" tone="agree" />
+  <Stat value="$15" label="Default monthly cap, shared across every billed task" note="[budget] in karani.toml" />
+  <Stat value="0" label="Applications karani has submitted, by design" note="ADR 0012" tone="agree" />
+</Stats>
+
+Past the cap, or with no API key set, a billed provider is swapped for the
+local model and the pass says once that it happened. A missing key is never
+a hard failure and a spent budget never stops the hunt ([ADR
+0019](/decisions/0019-hosted-tiers-behind-a-budget/)).
+
+</Band>
+
+<Band label="What leaves your machine" title="As little as you configure">
+
+karani is self-hosted and every integration is opt-in. Your resume, the
+database and every generated pack stay on disk.
+
+| Destination | What goes there |
+|---|---|
+| Job boards | Nothing about you. Public endpoints, read only. |
+| LLM provider | The posting, your resume, your positioning, past verdicts as examples. Set `provider = "local"` and nothing leaves. |
+| Slack, Notion, object storage | Shortlists, packs and application state — only if you configure them. |
+| Gmail | Nothing outbound. The watcher holds a **read-only** scope and cannot send, delete or mark read. |
+
+API keys live in `.env` and never in `karani.toml`, which the docs build
+checks: a config field whose name looks like a credential fails it.
+
+</Band>
+
+<Band label="Where to start" title="Four ways in">
+
+| If you want to | Go to |
+|---|---|
+| Have it running in ten minutes | [Installation](/start/installation/) |
+| Hunt for something other than the defaults | [Saying what to hunt](/start/configure/) |
+| Know what a flag does | [Command line](/reference/cli/) |
+| Drive it from an assistant | [Connecting an MCP client](/guides/mcp/) |
+| Understand why it works this way | [Decisions](/decisions/) |
+| Run it unattended | [Scheduling](/operations/scheduling/) |
+
+</Band>
+
+<Band label="Where it stands" title="One user, and it is his own job hunt">
+
+karani is on [PyPI](https://pypi.org/project/karani/) as `karani`. It is a
+personal tool rather than a product: it is built for one person's hunt, it
+makes no multi-tenant assumptions, and there is no hosted version and no
+plan for one. If you want to use it, fork it and rewrite `karani.toml` and
+`data/resume.md` — [the vision page](/project/vision/) says what that
+involves and what karani deliberately will not do.
+
+The one thing it will never do is press submit for you.
+
+</Band>

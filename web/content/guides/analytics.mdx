@@ -1,0 +1,143 @@
+---
+title: "Conversion analytics"
+description: "One durable row per application, conversion segmented by angle and variant, every rate reported with its interval, and a promotion rule that refuses to crown a winner on a small sample."
+---
+
+# Conversion analytics
+
+<Lede>
+A bare percentage over a handful of applications is a lie told with
+arithmetic. Everything on this page exists to stop karani telling you one.
+</Lede>
+
+```bash
+karani funnel                   # conversion, segmented, with intervals
+karani coach --window-days 7    # the derived weekly review
+karani variant list             # named strategy variants
+```
+
+## The funnel
+
+```
+application -> response -> screen -> onsite -> offer
+```
+
+One durable row per application, written when you record a submission.
+That is why the write-back matters: `karani submitted` is not bookkeeping,
+it is the only thing that creates a label ([ADR
+0022](/decisions/0022-conversion-ledger-and-variant-promotion/)).
+
+`karani funnel` splits the rates by positioning angle, strategy variant,
+company, comp band, warm-versus-cold, and the posting's age when you
+applied. Plus an autopsy: response rate by seniority and remote status, and
+keyword coverage for applications that got a response against those that
+did not.
+
+## Every rate ships with its interval
+
+Not a style preference. Three applications and one response is not a 33%
+response rate — it is a number between about 2% and 80%, and reporting the
+point estimate alone invites a decision the data cannot support.
+
+So every rate carries a 95% interval, and the intervals are what you
+compare rather than the percentages.
+
+## Fit bands are not pooled across scorers
+
+A fit score is only comparable within the model and prompt version that
+produced it. Measured over 598 rows:
+
+| Scorer | Mean fit | Rows above 80 |
+|---|---|---|
+| One hosted model | 38 | 2 |
+| A local 4B model | 47 | 31 |
+| A third hosted model | 51 | — |
+
+Those are not the same scale, and averaging them produces a number that
+describes nothing. So `karani funnel` pools fit bands **only when one
+scorer produced every score**, and otherwise reports per-scale with a
+warning.
+
+This is also how the autopilot's draft floor was found to be broken: it had
+been tuned against the third scorer and matched almost nothing under the
+first.
+
+<Note kind="caution" title="Change the qualify model, re-check the floor">
+
+`[autopilot] min_fit` is a number on one model's scale. After switching
+models, karani either drafts nothing or drafts everything until you look at
+the new distribution.
+
+</Note>
+
+## Variants, and the rule that refuses
+
+A variant is a named strategy — a positioning angle, a cover-letter
+structure, a resume ordering — that applications get tagged with so you can
+find out whether it works.
+
+```bash
+karani variant create data-platform-first --dimension positioning \
+  --description "Lead with platform scale, not causal ML"
+karani variant assign 1482 data-platform-first
+karani variant status
+```
+
+Promotion needs **both** of:
+
+- a minimum sample on each of two arms, and
+- non-overlapping 95% intervals.
+
+Short of that, there is no winner, and karani says there is no winner. A
+test pins that three applications do not produce one, because the
+temptation to read a winner out of three applications is exactly what this
+rule exists to resist.
+
+## Time to first response
+
+Tracked per application and per company. It is the most actionable number
+in the funnel, because it tells you when to follow up rather than whether
+to — a company whose median first response is three days has not replied in
+twelve for a reason.
+
+## Fast lanes
+
+A role with high fit, posted in the last three days, is flagged in `karani
+actions` as a fast lane. Applying on day one is measurably different from
+applying on day nine, and the funnel reports response rate by posting age
+at application, so this is a measured effect rather than folklore.
+
+## The coach review
+
+```bash
+karani coach --window-days 7
+karani coach --slack --save
+```
+
+A derived review over the same ledger: what converted this week, what did
+not, which variant is ahead and whether it is ahead by enough to say so.
+Derived means it adds no new data — if the funnel cannot support a claim,
+neither can the review.
+
+## What it costs you to get this
+
+The labels come from three commands:
+
+```bash
+karani submitted 1482 --cold      # the application exists
+karani status 1482 screen         # it progressed
+karani outcome 1482 rejection     # it ended
+```
+
+The watcher does the second and third for you when it is confident. The
+first is always yours, because only you know you pressed submit.
+
+An application karani does not know you sent contributes nothing to any
+number on this page.
+
+## Next
+
+- [The inbox watcher](/guides/watcher/) — how the later labels arrive
+  without you typing them.
+- [ADR 0022](/decisions/0022-conversion-ledger-and-variant-promotion/) —
+  the full argument, including what was measured and when.

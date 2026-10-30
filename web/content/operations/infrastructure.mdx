@@ -1,0 +1,185 @@
+---
+title: "Infrastructure"
+description: "Postgres with pgvector, object storage, and a local model server — all optional, all disposable. Plus the three Ollama settings that will cost you a thirteen-hour pass."
+---
+
+# Infrastructure
+
+<Lede>
+All of it is optional. karani runs end to end on an in-memory store with no
+model key, and each piece here is an upgrade rather than a prerequisite.
+</Lede>
+
+```bash
+karani infra up                        # Postgres + pgvector on :5433
+karani infra up --profile local-llm    # and Ollama on :11434
+karani infra down                      # stop; volumes persist
+```
+
+## Postgres
+
+```
+DATABASE_URL=postgresql://karani:karani@localhost:5433/karani
+```
+
+Any Postgres works and the DSN is the only switch — a managed one is fine.
+The compose stack binds 5433 rather than 5432 so it cannot collide with a
+system Postgres.
+
+```bash
+docker exec -it karani-db psql -U karani
+```
+
+### Schema changes are additive, always
+
+Every schema addition is `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, and
+the whole schema block runs idempotently on every connect. Callers never
+touch DDL.
+
+**There is never a destructive migration.** The database has a real
+application history in it, and that history is the only thing the
+conversion funnel has to learn from. If you see a migration failure,
+somebody broke the rule ([CLAUDE.md
+4.7](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)).
+
+### The in-memory fallback is a real code path
+
+With no `DATABASE_URL`, karani uses an in-memory store. Every write method
+has that branch, the tests run on it, and it is how you try the pipeline
+before deciding you want a database ([ADR
+0006](/decisions/0006-in-memory-storage-fallback/)).
+
+State does not survive the process. That is the only catch.
+
+## Object storage
+
+MinIO or S3, for the rendered `.docx` and PDF documents, one prefix per
+job, with presigned links that open on a phone ([ADR
+0014](/decisions/0014-artifact-store-and-humanizer/)).
+
+```toml
+[artifacts]
+endpoint = "localhost:9010"
+bucket = "karani"
+secure = false
+presign_days = 7
+```
+
+Without it, packs are still written to `drafts/` as markdown. You lose the
+phone-friendly links on the Slack card, not the pack.
+
+## A local model server
+
+This is where the real operational knowledge is, and all three items below
+were learned by something going wrong.
+
+### On macOS, run the app natively — never the container
+
+Docker on a Mac has no GPU passthrough. The same small model measured
+**30 to 60 times slower** CPU-only inside the VM. The compose `local-llm`
+profile is for Linux hosts with `--gpus`.
+
+Both bind 11434, so stop one before starting the other.
+
+### Raise the context window
+
+Ollama defaults to a 4096-token context and **silently truncates** anything
+longer. A qualification prompt — instructions, your whole resume, the
+posting, past verdicts — is comfortably bigger than that, so the default
+means the model is judging a posting against a resume it was never shown
+the end of, and nothing anywhere says so.
+
+```bash
+launchctl setenv OLLAMA_CONTEXT_LENGTH 16384
+killall Ollama ollama      # the menu-bar quit can leave the server running
+```
+
+Verify after one request:
+
+```bash
+curl -s localhost:11434/api/ps    # check context_length
+```
+
+<Note kind="warning" title="launchctl setenv does not survive a reboot">
+
+Which is why `karani hunt` installs a login agent to re-apply it when
+qualify runs locally. If you set it by hand and skip the scheduler, you
+will lose it at the next restart and never be told.
+
+</Note>
+
+### Pin one parallel slot
+
+With more than one slot, Ollama **splits the context window per slot**,
+quietly undoing the setting above.
+
+```bash
+launchctl setenv OLLAMA_NUM_PARALLEL 1
+```
+
+karani matches its own fan-out to this. When it did not, queued rows burned
+the client timeout and **one pass took 13.5 hours**.
+
+### Budget the batch
+
+A small local model runs roughly 75 to 170 seconds per row on a laptop, and
+its thinking trace cannot usefully be disabled — asking for no thinking
+just moves the same volume into the visible answer.
+
+So keep `[hunt] qualify_limit` low enough that a pass fits the hour: 15
+rows is about 30 minutes. A pass that cannot finish silences every pass
+after it ([ADR 0025](/decisions/0025-every-pass-has-a-deadline/)).
+
+### No JSON grammar mode
+
+karani deliberately does not ask Ollama for JSON-object output format.
+Ollama implements it as grammar-constrained decoding, which fights thinking
+models — measured at roughly **60 times slower**. Do not add it back.
+
+## The vector store
+
+mem0's index lives in pgvector in the compose Postgres, reached through its
+own DSN rather than `DATABASE_URL`. That separation is deliberate: the
+ledger can live in a managed database while the disposable index stays
+local.
+
+```bash
+uv sync --extra memory
+uv run python -m spacy download en_core_web_sm
+KARANI_MEMORY=mem0
+```
+
+Drop the collection and nothing is lost — `karani reindex` replays the
+ledger. [Memory](/guides/memory/) has the invariant.
+
+## Backup
+
+The database is the only thing that cannot be regenerated. Your resume and
+`karani.toml` are files you wrote; the packs can be re-drafted; the vector
+index is derived.
+
+```bash
+pg_dump "$DATABASE_URL" | gzip > backups/karani-$(date +%F).sql.gz
+```
+
+What is worth backing up is the application history, because the
+conversion funnel has nothing else to learn from.
+
+## Pruning
+
+The `raw` payload stored on every row is the biggest consumer of space, and
+it is kept on purpose: feed schemas drift, and `raw` is what lets you write
+a reparser rather than losing the data.
+
+When size becomes a problem, closed postings you never applied to are the
+safe thing to drop:
+
+```sql
+DELETE FROM jobs
+ WHERE active = FALSE
+   AND closed_at < NOW() - INTERVAL '90 days'
+   AND application_status IS NULL;
+```
+
+The `application_status IS NULL` clause is the important one. Never prune a
+row with an application on it.

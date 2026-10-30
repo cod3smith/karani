@@ -1,0 +1,156 @@
+---
+title: "Drafting a pack"
+description: "A tailored resume, a cover letter in your voice, and answers to the application's questions — with every claim about you traced back to a record you wrote."
+---
+
+# Drafting a pack
+
+<Lede>
+The one step worth paying a good model for. It is also the step with the
+strictest rule in the project: nothing karani says about you is allowed to
+be something you did not say first.
+</Lede>
+
+```bash
+karani draft 1482
+```
+
+## What a pack is
+
+Four things, written in one pass so they agree with each other:
+
+- **A tailored resume.** Not a rewrite — a *selection* over your own
+  profile records, ordered for this role, with the bullets that do not
+  argue for this job left out.
+- **A cover letter**, in your register rather than a model's.
+- **Answers** to the application's questions.
+- **A keyword report**: which terms the posting uses that your resume does
+  not, scored deterministically.
+
+The output lands in `drafts/` as markdown, and as `.docx` and PDF in the
+job's object-storage prefix when that is configured, with presigned links
+that open on a phone ([ADR
+0014](/decisions/0014-artifact-store-and-humanizer/)).
+
+## The provenance rule
+
+The tailorer does not take prose back from the model. It takes **records
+with citations**, and verifies each one before anything ships:
+
+| What came back | What happens |
+|---|---|
+| A citation naming a record that does not exist | Dropped |
+| A quote that is not a verbatim span of your transcript | Dropped |
+| A rewrite that lost a figure the source had | Falls back to the original |
+| A record with no provenance at all | Discarded, not repaired |
+
+That is mechanical, not a prompt asking nicely ([CLAUDE.md
+4.13](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)). The reason
+is simple: a fabricated accomplishment gets through a resume screen and
+then gets probed in an interview, and you are the one who has to answer.
+
+A pack that comes out thinner because three claims could not be verified is
+the correct outcome. The alternative is a pack that reads better and is
+partly false.
+
+## The attestations a model never writes
+
+Work authorization, visa sponsorship, relocation and start date are not
+drafted. They are **resolved** from the legal facts you declared in
+`[legal]`, by code, and handed to the model as settled input:
+
+> A drafting model may *receive* the resolved line. It must never produce
+> one.
+
+The same question has opposite correct answers depending on the role's
+shape. *"Will you now or in the future require sponsorship?"* is **no** for a
+global-remote role engaged through an employer of record and **yes** for
+the Berlin role that sponsors a visa. A model that is right most of the
+time is producing a misrepresentation on a signed form the rest of the time
+([CLAUDE.md
+4.12](https://github.com/cod3smith/karani/blob/main/CLAUDE.md)).
+
+An unknown geography resolves to **needs review**, never to an assumed yes.
+
+The same rule covers numbers you will state as fact. The comp figures in an
+interview prep pack are derived from the posted band, your declared floor
+and comparable postings karani has already ingested — the model may phrase
+around them, it may never originate them.
+
+## The humanizer
+
+A draft goes through a detector and a rewrite pass. The detector is
+deterministic and it **arbitrates**: it scores the text for the usual
+tells, the rewrite addresses them, and the score is what decides whether
+the rewrite was an improvement rather than the model's opinion of its own
+work.
+
+The Slack review card shows the voice score, so you can see whether the
+pack you are about to approve reads like you.
+
+## Keyword coverage
+
+`karani/drafting/keywords.py` is deterministic — no model. It extracts the
+posting's terms, finds the ones your resume does not use, and feeds that
+gap into the draft prompt. The final coverage is persisted per application,
+which makes it a *measurable* variable: `karani funnel` reports coverage
+for applications that got a response against those that did not.
+
+Not every missing keyword is worth adding. The gap is an input to the
+prompt, not an instruction to stuff terms in.
+
+## The review card
+
+With Slack configured, each pack arrives as a card: the summary, the cover
+letter, the voice score, links to the documents, and four buttons —
+*Approve pack*, *Skip role*, *I applied (warm)*, *I applied (cold)*.
+
+Approve marks it `ready` and links the posting. Then **you** submit on the
+portal and press *I applied*. Every click records the verdict, feeds the
+taste calibration, and updates the Notion board.
+
+There is no button that submits, and there will not be ([ADR
+0012](/decisions/0012-autopilot-draft-human-send/)).
+
+## Unattended drafting
+
+The hourly pass drafts packs for new top-fit roles by itself. Three bounds,
+all of them necessary:
+
+| Bound | Default | What it stops |
+|---|---|---|
+| Fit floor | 85 | Drafting for roles you would not apply to |
+| Per-run cap | 3 | One strange hour emptying the budget |
+| Daily cap | 5 | Twenty-four strange hours doing the same |
+
+A drafted posting leaves the candidate pool, so no posting is ever drafted
+twice. Setting the per-run cap to 0 disables drafting without disabling the
+pass.
+
+<Note kind="caution" title="The fit floor is on one model's scale">
+
+85 means something different under each qualify model — measured over 598
+rows, one model put 2 rows above 80 and another put 31 there. A floor tuned
+against one and left alone after switching matches almost nothing, or
+everything ([ADR
+0022](/decisions/0022-conversion-ledger-and-variant-promotion/)).
+
+</Note>
+
+## Follow-ups
+
+```bash
+karani followup 1482
+```
+
+A note for an application that has gone quiet, hooked on something that has
+actually happened at the company since you applied — from the cached
+dossier (`karani intel <company>`), not from a template that says "I wanted
+to follow up".
+
+## Next
+
+- [The submission console](/guides/submission/) — how a pack becomes a sent
+  application.
+- [Conversion analytics](/guides/analytics/) — whether the angle you chose
+  converts.

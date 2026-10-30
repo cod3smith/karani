@@ -1,0 +1,161 @@
+---
+title: "Conventions"
+description: "What keeps the codebase legible after six months of drift. Follow these mechanically; they are not preferences."
+---
+
+# Conventions
+
+<Lede>
+Concrete and opinionated. Most of these exist because something went wrong
+once, and the ones that do say so.
+</Lede>
+
+## Python
+
+- **3.11 or newer.** `str | None`, `dict` and `list` generics, `match` where
+  it is cleaner.
+- **`from __future__ import annotations`** at the top of every module.
+  Deferred evaluation buys cleaner circular-import handling and faster
+  imports.
+- **Type hints on everything that crosses a module boundary.** Internal
+  helpers may skip them where the call site makes them obvious.
+- **Async in the hot path** — ingestion, qualification, drafting. Sync
+  helpers are fine for pure computation.
+- **No blocking I/O inside an async function.** No `time.sleep`, no
+  `requests`, no synchronous database driver.
+
+## Structure
+
+- **One class or one concern per module.**
+- **`__init__.py` is a re-export shim, not a place for logic.**
+- **No god-modules.** A file crossing 300 lines wants a natural cut looked
+  for.
+
+## Pydantic
+
+- **v2 only.**
+- **Every payload that crosses a package boundary is a model.** Never a raw
+  dict between packages.
+- **Prefer `Field(...)` with a description** on user-facing models. Models
+  read them.
+
+## Errors
+
+- **Model errors are recoverable.** Never let a bad response kill a batch:
+  downgrade to `maybe` with an explanation.
+- **Network errors are retryable**, through the shared helpers.
+- **Validation errors from internal code are bugs** — fix the caller. From
+  model output, log and downgrade.
+- **`assert` is not error handling.** Never assert on a user-visible
+  contract.
+
+## Logging
+
+- A logger per module.
+- **Info** for user-relevant events, **warning** for recoverable
+  degradations, **exception** with the traceback for the unexpected.
+- **Never `print()` in library code.** The CLI is the only place `print` is
+  allowed, because that is user-facing output.
+
+## Concurrency
+
+- **Bound every gather with a semaphore.** An unbounded gather is the
+  fastest way to get rate-limited.
+- **Per-host semaphores where possible.**
+- **Never mutate shared state across tasks without a lock.**
+
+## Testing
+
+- **Deterministic, always.** No wall clock, no network, no sleeps. If a test
+  needs "now", fixture it.
+- **Storage tests use the in-memory fallback.** It is a real code path.
+- **LLM tests use fake clients.** A test that needed a key would bill
+  whoever ran the suite.
+- **Parametrize regression cases**, and every guardrail has a matching test.
+- **New public API means a new test.** No exceptions.
+- **Coverage is not the goal; behaviour lock-in is.**
+
+The Postgres-backed SQL has its own suite behind a marker, excluded from
+the default run. It is the one sanctioned exception to no-network, and a
+test belongs there whenever production SQL changes.
+
+Graph tests fake ingest and qualify. Building the real graph otherwise runs
+the real orchestrator against live job boards, which is a test that costs
+money and annoys nine companies.
+
+<Note kind="warning" title="The credential strip is load-bearing">
+
+The suite strips every external credential before any module loads, plus an
+automatic re-strip per test. Best-effort integrations read the environment
+at call time, so without it a developer's real `.env` makes a
+"deterministic" test write to a live service.
+
+This is not theoretical. It happened, as thirty fixture pages on the real
+Notion board.
+
+</Note>
+
+<Note kind="tip" title="Six seconds is a gate">
+
+The in-process tests run in about six seconds; five subprocess tests add
+roughly thirty-four more. **When those six seconds climb, something is
+doing network I/O** — treat it as a failure even when every test passes.
+
+</Note>
+
+## Prompts
+
+- **Versioned.** Bump the version on any material change, because every
+  stored row carries the version it was produced under and that is the only
+  thing that makes old and new data distinguishable.
+- **Rendered from templates**, not concatenated inline.
+- **JSON-schema-terminated.** Every user prompt ends with a strict spec,
+  and a pydantic model validates the parse.
+- **Voice rules go in the system prompt; task data in the user prompt.**
+  Do not cross the streams — and for the qualification prompt the split is
+  also what makes prompt caching work, so per-row content above the
+  breakpoint silently kills the cache.
+
+## The CLI
+
+- **Subcommands**, with the verb required.
+- **Every command returns an exit code from an async function.** Never call
+  `sys.exit` inside the async function; return the code and let the entry
+  point exit.
+- **Print a machine-readable summary after a long operation.** Something is
+  reading the log.
+- **No colour.** The terminal and the log file both have to be legible.
+
+## Storage
+
+- **`ADD COLUMN IF NOT EXISTS` on every addition.** Never a destructive
+  migration on a database with real application history in it.
+- **JSONB for anything that would otherwise need a shape-change migration.**
+- **Idempotent connect.** Callers never touch DDL.
+- **The in-memory fallback is a real code path, not a shim.**
+
+## Git and pull requests
+
+- **Small commits**, one concept each.
+- **The body explains why.** The diff explains what.
+- Update `CLAUDE.md` when a change touches positioning, architecture, a
+  public interface, or one of its rules.
+- Update the roadmap when a listed item ships.
+- **Add an ADR when reversing or superseding a documented decision.** Never
+  edit an accepted one to reverse it.
+
+## No emojis in code or docs
+
+Unless explicitly asked for. They render differently in different
+terminals, and this is a terminal-first tool.
+
+## What this project does not do
+
+- **No dependency-injection framework.** Constructor arguments and closures
+  are enough.
+- **No ORM.** Hand-written SQL.
+- **No async context managers for one-shot code paths.** `async with` is for
+  real resources, not for aesthetics.
+- **No abstract base class with one implementation.** The fetcher base is
+  one because the type checker uses it and there are nine implementations.
+- **No metaclasses.** Ever.

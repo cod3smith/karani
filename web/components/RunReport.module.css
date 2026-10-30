@@ -1,0 +1,176 @@
+/*
+ * The transcript plate.
+ *
+ * The same plate as the qualification one -- a raised sheet, a hairline
+ * frame, a bar across the top with a figure number at its left -- but with
+ * no signal colour on the frame. A pass is not a verdict; its colour lives
+ * in the status column, one word per row.
+ */
+
+.panel {
+  margin-block: 1.8em;
+  border: 1px solid var(--ka-rule);
+  border-radius: var(--ka-radius-lg);
+  background: var(--ka-paper-raised);
+  overflow: hidden;
+}
+
+/* ---- Top bar ---- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 1rem 0.6rem 1.15rem;
+  background: var(--ka-paper-sunken);
+  border-bottom: 1px solid var(--ka-rule);
+  font-family: var(--ka-font-mono);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+/* The figure label is global (`.ka-figure`, counted in globals.css) and is
+   only positioned here, so a Verdict and a RunReport on one page draw from
+   the same count and look like the same kind of plate. */
+.bar > :global(.ka-figure) {
+  flex: none;
+  line-height: 1.5;
+}
+
+/* The divider and its gap exist to separate the label from what follows, so
+   a label with nothing after it has neither. */
+.bar > :global(.ka-figure):not(:last-child) {
+  padding-right: 1rem;
+  border-right: 1px solid var(--ka-rule);
+}
+
+/* Pushed to the right, where Verdict puts its own note. */
+.note {
+  color: var(--ka-ink-muted);
+  margin-left: auto;
+}
+
+.body {
+  padding: 0.95rem 1.15rem;
+  font-family: var(--ka-font-mono);
+  font-size: 0.845rem;
+  line-height: 1.75;
+  overflow-x: auto;
+}
+
+/* ---- The typed command ---- */
+
+.command {
+  display: flex;
+  gap: 0.9ch;
+  align-items: baseline;
+  padding-bottom: 0.5em;
+  margin-bottom: 0.6em;
+  border-bottom: 1px solid var(--ka-rule);
+  color: var(--ka-ink);
+  font-weight: 560;
+}
+
+.prompt {
+  color: var(--ka-ink-faint);
+  user-select: none;
+  flex: none;
+}
+
+.heading {
+  color: var(--ka-ink-muted);
+  margin-bottom: 0.35em;
+}
+
+/* ---- One step, one row ---- */
+
+.row {
+  display: grid;
+  grid-template-columns: 10.5ch 1fr max-content;
+  gap: 0 1.4ch;
+  align-items: baseline;
+}
+
+.status {
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+/* Work karani did. */
+.row[data-status='fetched'] .status,
+.row[data-status='drafted'] .status,
+.row[data-status='delivered'] .status {
+  color: var(--ka-brand);
+}
+
+/* A drop is the pre-filter working, which is the cheapest good outcome
+   karani has: about 95% of every pass ends here, before any model call. */
+.row[data-status='dropped'] .status,
+.row[data-status='qualified'] .status {
+  color: var(--ka-agree);
+}
+
+/* Nothing to do, or nothing spent. Set back rather than celebrated. */
+.row[data-status='skipped'] .status {
+  color: var(--ka-ink-faint);
+}
+
+.row[data-status='flagged'] .status {
+  color: var(--ka-notice);
+}
+
+.row[data-status='failed'] .status {
+  color: var(--ka-refuse);
+}
+
+.subject {
+  color: var(--ka-ink-muted);
+  min-width: 0;
+}
+
+.name {
+  font-family: var(--ka-font-mono);
+  font-size: 1em;
+  color: var(--ka-ink);
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* Right-aligned so counts can be compared down the column. */
+.count {
+  color: var(--ka-ink-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ---- The bottom line ---- */
+
+.summary {
+  margin-top: 0.7em;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--ka-rule);
+  color: var(--ka-ink);
+  font-weight: 620;
+}
+
+.plain {
+  color: var(--ka-ink-muted);
+  white-space: pre-wrap;
+}
+
+.blank {
+  height: 0.6em;
+}
+
+@media (max-width: 640px) {
+  .row {
+    grid-template-columns: 10.5ch 1fr;
+  }
+  .count {
+    grid-column: 2;
+    text-align: left;
+  }
+}

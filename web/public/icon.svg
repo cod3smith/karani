@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="karani">
+  <!--
+    The display variant, for 32px and up. The small variant
+    (favicon.svg) has thicker slabs and survives a 16px tab strip.
+
+    The mark is a filed sheet: a spine down the left edge, three ruled
+    lines of a record, and one blue stroke across the foot where a
+    signature goes. karani fills the sheet in; the blue line is the part
+    it will not draw for you.
+  -->
+  <g fill="#F6F7F9">
+    <rect x="22" y="12" width="7" height="76" />
+    <rect x="35" y="22" width="43" height="6" />
+    <rect x="35" y="40" width="43" height="6" />
+    <rect x="35" y="58" width="28" height="6" />
+  </g>
+  <polygon points="22,80 78,73 78,81 22,88" fill="#7DD3FC" />
+</svg>

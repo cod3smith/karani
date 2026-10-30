@@ -1,0 +1,146 @@
+---
+title: "Monitoring and liveness"
+description: "How to tell karani is still alive, why the watchdog is sh and curl and nothing else, and the two ways a pipeline dies while every indicator looks fine."
+---
+
+# Monitoring and liveness
+
+<Lede>
+karani has died silently twice, in two different ways, and both times every
+indicator looked fine. This page is what came out of that.
+</Lede>
+
+## Checking on it
+
+```bash
+launchctl list | grep karani    # exit 0 healthy; 127 means the binary is gone
+cat logs/.last-pass             # when the last pass completed
+tail logs/watchdog.log          # what the watchdog has alerted about
+sh ~/.karani/watchdog.sh        # run the check by hand
+karani stats                    # database counts; proves the DSN works
+karani funnel                   # whether any of it is working
+```
+
+## Two ways to die quietly
+
+### A pass that cannot start
+
+A routine `find ~ -name .venv | xargs rm -rf` deleted karani's virtualenv.
+launchd kept firing the job, the job kept exiting 127, and nothing noticed
+for **eight days**. The exit code was there in `launchctl list` the whole
+time; nobody was reading it.
+
+The fix was two things: install as a tool rather than from a project venv,
+and add something outside the process to notice ([ADR
+0018](/decisions/0018-out-of-process-liveness/)).
+
+### A pass that cannot finish
+
+karani went silent for **40 hours**. `launchctl list` showed the job
+present and exit code 0. The database was up, object storage was up, the
+binary resolved, the budget had most of the month left.
+
+The scheduler was not dead — it was *running*. One pass had blocked on a
+request to the local model server, which had auto-updated and restarted
+mid-request. The client socket stayed established, the caller had no
+timeout, and launchd will not start a second instance of a job while the
+first is alive.
+
+One wedged call silenced the entire pipeline. The fix is the pass deadline
+([ADR 0025](/decisions/0025-every-pass-has-a-deadline/)), and the watchdog
+is what told anyone it was happening.
+
+## The watchdog
+
+`com.karani.watchdog`, hourly, is POSIX `sh` and `curl` in `~/.karani/`. It
+reads one marker file — the timestamp the hourly pass writes on completion
+— and alerts if it is stale.
+
+It must never import karani, touch a virtualenv, or open the database. A
+test enforces that.
+
+> The in-process heartbeat runs from the same binary as the hunt, so it
+> cannot survive a shared-runtime failure.
+
+That is the whole lesson. A health check that shares a runtime with the
+thing it checks reports "healthy" right up until it reports nothing at all,
+and then it is indistinguishable from "quiet week". The two checks have to
+be independent, and the independent one has to be built from the dullest
+possible parts.
+
+The watchdog can only *report*. That is the correct scope for a dead-man's
+switch, and it is exactly why detection alone was not enough — hence the
+deadline.
+
+## What to alert on
+
+### A zero-fetch pass
+
+If a pass fetches almost nothing across all nine sources, something is
+broken: a feed schema drifted, a slug 404'd, or the network is blocked.
+karani prints a machine-readable summary line for exactly this:
+
+```bash
+karani run 2>&1 | tee -a logs/run.log | grep -q 'fetched=0 ' && \
+  echo "karani: zero-fetch" | mail -s "karani broken" you@example.com
+```
+
+### Spend that does not look like the plan
+
+The monthly cap means you cannot be surprised by an invoice, but you can be
+surprised by *where* the money went. A daily average well above what the
+pass volume implies usually means idempotency has broken and rows are being
+re-qualified.
+
+```bash
+karani stats     # counts; a qualified count that keeps climbing is the tell
+```
+
+### Database size
+
+The `raw` payload on every row is the main consumer, and it is kept on
+purpose. [Infrastructure](/operations/infrastructure/) has the safe pruning
+query.
+
+## What not to alert on
+
+A missing API key. A spent budget. An unconfigured Slack channel. A Notion
+integration that 404'd.
+
+All of those are **designed** degradations: billed work falls back to the
+local model and says so once, and every delivery step is best-effort so a
+briefly-down channel never sinks a pass that fetched 1,600 postings. An
+alert on each of them every hour is how a monitoring setup gets muted, and
+a muted setup is worse than none.
+
+The corollary: a Slack push failing is not loud. If cards stop arriving,
+read the log rather than waiting to be told.
+
+## Secrets rotation
+
+Every 90 days for hygiene, immediately on any exposure.
+
+| Credential | Where | Test it with |
+|---|---|---|
+| Database password | Your Postgres provider | `karani stats` |
+| `OPENROUTER_API_KEY` | OpenRouter dashboard | one-row `karani qualify` |
+| `ANTHROPIC_API_KEY` | Anthropic console | one-row `karani qualify` |
+| Slack tokens | The Slack app config | `karani notify --kind actions` |
+| `GMAIL_REFRESH_TOKEN` | `karani watch --authorize` | `karani watch --no-slack` |
+
+The Gmail token is the one that rotates whether you like it or not: an app
+left in Google's Testing mode expires its refresh tokens after seven days.
+`invalid_grant` from `watch` means re-run the consent flow.
+
+## Recovering
+
+After the environment is deleted:
+
+```bash
+uv tool install --editable ".[slack,orchestrator,artifacts,memory,anthropic]"
+karani hunt
+```
+
+Nothing else is lost. The database, the object storage and the config all
+live outside the environment, which is why this is a two-command recovery
+rather than a restore.

@@ -1,0 +1,130 @@
+---
+title: "Connecting an MCP client"
+description: "karani serves the whole pipeline as an MCP server over stdio. Configuration for Claude Code, Claude Desktop, Cursor and anything else that speaks it."
+---
+
+# Connecting an MCP client
+
+<Lede>
+27 tools over stdio, mapping onto the CLI verbs one for one. The point is
+not a second interface — it is that "what should I do on the job hunt
+today?" becomes a question you can ask.
+</Lede>
+
+```bash
+karani mcp
+```
+
+## The two tokens every host needs
+
+Command `karani`, args `["mcp"]`. That is the whole configuration.
+
+The server inherits the client's environment, so secrets come from your
+shell or `.env`, and `karani.toml` is found in the working directory or
+`~/.karani/`.
+
+### Claude Code
+
+The repository ships a project-scoped `.mcp.json`, so a session opened in
+the karani directory connects automatically. From anywhere else:
+
+```bash
+claude mcp add karani -- karani mcp
+```
+
+### Claude Desktop
+
+In `claude_desktop_config.json` (Settings, Developer, Edit Config):
+
+```json
+{
+  "mcpServers": {
+    "karani": { "command": "karani", "args": ["mcp"] }
+  }
+}
+```
+
+### Cursor
+
+In `.cursor/mcp.json` in your workspace, or the global one:
+
+```json
+{
+  "mcpServers": {
+    "karani": { "command": "karani", "args": ["mcp"] }
+  }
+}
+```
+
+### Anything else
+
+VS Code with Copilot, Windsurf, Zed, your own agent: configure a stdio
+server with command `karani`, args `["mcp"]`.
+
+If the host cannot resolve `karani` on `PATH`, use the absolute path from
+`which karani`, or the `uv` form — command `uv`, args `["run", "karani",
+"mcp"]`, with the repository as the working directory.
+
+## The conversations that earn their keep
+
+Once connected you talk normally and the assistant picks the tools.
+
+**"What should I do on the job hunt today?"** → `next_actions` returns the
+worklist already bucketed: review, draft, submit, follow up, with fast-lane
+roles flagged. This is the one to start a session with.
+
+**"Anything new worth applying to?"** → `shortlist`, then `get_job` for
+whichever one you ask about.
+
+**"Build the application for 1482."** → `draft`, which returns the tailored
+resume, the humanized letter and the artifact links. Then "mark it
+approved" → `set_status`.
+
+**"I applied to the Northwind role through a referral."** → `set_status`
+with `warm_path` set, which is what feeds the warm-versus-cold split in the
+funnel.
+
+**"They asked me about incident ownership in the screen."** →
+`record_question`. Future prep packs for that company recall it.
+
+**"Remember that I will not consider crypto companies."** → `remember`.
+Every later qualification recalls it.
+
+**"How is the hunt converting?"** → `funnel_stats`.
+
+**"Run a hunt pass now."** → `autopilot`. Billed, and budget-capped.
+
+## Driving the whole loop headlessly
+
+An orchestrating agent can run it as a loop: `next_actions`, act, repeat.
+The billed tools (`qualify`, `draft`, `prep`, `draft_followup`,
+`autopilot`) say so in the description the client reads, and respect the
+same monthly budget as the scheduler — so an agent cannot spend past the
+cap even if it tries.
+
+## It is a thin adapter
+
+Every tool calls the same runners and the same storage methods the CLI
+calls, and holds no logic of its own ([ADR
+0008](/decisions/0008-mcp-server-interface/)). That is why the two surfaces
+cannot disagree about what `set_status` does, and why a new capability goes
+onto storage or a runner **first** and gets an MCP tool second.
+
+Storage is a lazily-connected process-wide singleton, so the in-memory
+fallback keeps state for the whole server lifetime — which makes a scratch
+session with no database a real thing you can do.
+
+Expected input failures raise a tool error rather than a plain exception,
+so the message survives the SDK's exception masking and reaches the client
+as something a model can act on.
+
+## What the server will not do
+
+There is no tool that submits an application, and there will not be ([ADR
+0012](/decisions/0012-autopilot-draft-human-send/)). `submission_console`
+builds the page; `mark_submitted` records what *you* sent.
+
+## Next
+
+[MCP tools](/reference/mcp/) is every tool with its parameters, generated
+from the server's own listing.

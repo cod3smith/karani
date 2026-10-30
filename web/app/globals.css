@@ -1,0 +1,620 @@
+/*
+ * karani base styles and ledger furniture.
+ *
+ * The ground is near-black and the ink is a cool off-white, taken from the
+ * submission console so the docs read as the same product. A light theme is
+ * kept, fully retuned, because this site carries long reference tables that
+ * people print: the print stylesheet at the foot of this file forces black
+ * ink on white paper whatever theme the reader is in. Every colour here is a
+ * token from tokens.css; the only values this file sets itself are the
+ * aurora, which is the brand blue at a few percent, and the neutral black,
+ * white and greys of the print stylesheet. The grain has no hue: it is
+ * multichannel fractal noise at 3.5% opacity.
+ *
+ * Type has three voices. Newsreader is the display face and sets h1 and the
+ * large titles only. Source Serif sets the prose at a 72ch measure, because
+ * karani is a clerk and this is its ledger. Geist and Geist Mono carry the
+ * interface, the eyebrows and the numbering — and every word the pipeline
+ * itself says, which is always mono.
+ *
+ * The furniture is what makes a page read as a record rather than a themed
+ * Nextra site: `.ka-eyebrow` and `.ka-mono` for labels, a `No. NN` marker on
+ * every h2, a `FIG. NN` counter for figures, and the `.ka-grain` and
+ * `.ka-aurora` atmosphere layers. Both counters reset on `article main`, so
+ * they restart on every page and cannot drift apart.
+ */
+
+@import './tokens.css';
+
+/* ===================================================================
+   Base
+   =================================================================== */
+
+html {
+  font-family: var(--ka-font-ui);
+  background: var(--ka-paper);
+  color: var(--ka-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--ka-paper);
+}
+
+::selection {
+  background: var(--ka-brand-soft);
+  color: var(--ka-ink);
+}
+
+/* ===================================================================
+   Prose
+   -------------------------------------------------------------------
+   Serif body at a 72ch measure.
+   =================================================================== */
+
+article main :is(p, li, dd, blockquote, td, th) {
+  font-family: var(--ka-font-prose);
+  font-size: var(--ka-prose-size);
+  line-height: var(--ka-prose-leading);
+  letter-spacing: -0.003em;
+}
+
+article main p {
+  margin-block: 1.1em;
+  max-width: var(--ka-measure);
+  color: var(--ka-ink);
+}
+
+article main :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--ka-font-ui);
+  color: var(--ka-ink);
+  text-wrap: balance;
+}
+
+article main h1 {
+  font-family: var(--ka-font-display);
+  font-size: clamp(2.1rem, 1.6rem + 1.8vw, 2.9rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  margin-block: 0 0.65em;
+  max-width: 30ch;
+}
+
+/* A hairline above every h2 does the work a heavier font weight would
+   otherwise have to do, and keeps long pages scannable. */
+article main h2 {
+  font-size: 1.55rem;
+  font-weight: 620;
+  letter-spacing: -0.022em;
+  line-height: 1.22;
+  margin-block: 2.9em 0.8em;
+  padding-top: 1.5rem;
+  padding-bottom: 0;
+  border-top: 1px solid var(--ka-rule);
+  border-bottom: 0;
+  max-width: 40ch;
+}
+
+article main h3 {
+  font-size: 1.16rem;
+  font-weight: 620;
+  letter-spacing: -0.013em;
+  margin-block: 2.1em 0.6em;
+}
+
+article main h4 {
+  font-size: 1rem;
+  font-weight: 620;
+  letter-spacing: 0.005em;
+  margin-block: 1.9em 0.5em;
+  color: var(--ka-ink-muted);
+}
+
+/* Anchor links: visible on hover only, and set in mono so they read as a
+   fragment identifier rather than a decoration. */
+article main :is(h2, h3, h4) a[href^='#']::after {
+  content: '#';
+  font-family: var(--ka-font-mono);
+  font-size: 0.78em;
+  font-weight: 400;
+  color: var(--ka-ink-faint);
+  margin-left: 0.5ch;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+article main :is(h2, h3, h4):hover a[href^='#']::after {
+  opacity: 1;
+}
+
+/* ---- Links ---- */
+
+/* Nextra puts utility classes on every link it renders, so `a:not([class])`
+   matches almost nothing. Prose links are the anchors inside running text;
+   the heading permalink and the components' own links are not.
+
+   The second selector keys to the utility Nextra paints a link with
+   (`x:text-primary-600`, whose value comes from Nextra's own lightness ramp
+   rather than our tokens), so no link can keep it. check-furniture --built
+   asserts that every such utility in the built HTML is covered here by a
+   token that passes AA. */
+article main :is(p, li, dd, td, th, blockquote) a:not(.subheading-anchor),
+article main a[class*='x:text-primary-600'] {
+  color: var(--ka-brand);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  text-decoration-color: var(--ka-brand-rule);
+  transition: text-decoration-color 120ms ease, color 120ms ease;
+}
+
+article main :is(p, li, dd, td, th, blockquote) a:not(.subheading-anchor):hover,
+article main a[class*='x:text-primary-600']:hover {
+  color: var(--ka-brand-hover);
+  text-decoration-color: var(--ka-brand);
+}
+
+/* ---- Lists ---- */
+
+article main :is(ul, ol) {
+  margin-block: 1.1em;
+  max-width: var(--ka-measure);
+  padding-left: 1.4em;
+}
+
+article main li {
+  margin-block: 0.4em;
+}
+
+article main ul > li::marker {
+  color: var(--ka-ink-faint);
+}
+
+article main ol > li::marker {
+  color: var(--ka-ink-faint);
+  font-family: var(--ka-font-mono);
+  font-size: 0.85em;
+}
+
+/* ---- Blockquote: a thin rule, no background tint ---- */
+
+article main blockquote {
+  border-left: 2px solid var(--ka-rule-strong);
+  padding-left: 1.3em;
+  margin-block: 1.6em;
+  color: var(--ka-ink-muted);
+  font-style: normal;
+}
+
+/* ---- Tables ----
+   This site is mostly tables: the CLI flags, the MCP tool set, the config
+   schema, the environment variables. They are set to be read down a column,
+   so the header row is a label and the body is a notch smaller than prose. */
+
+article main table {
+  width: 100%;
+  margin-block: 1.8em;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  display: table;
+}
+
+article main thead {
+  border-bottom: 1px solid var(--ka-rule-strong);
+}
+
+article main th {
+  font-family: var(--ka-font-ui);
+  font-size: 0.73rem;
+  font-weight: 620;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ka-ink-muted);
+  text-align: left;
+  padding: 0 1.1em 0.7em 0;
+  background: none;
+}
+
+article main td {
+  padding: 0.72em 1.1em 0.72em 0;
+  border-bottom: 1px solid var(--ka-rule);
+  vertical-align: baseline;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+article main :is(th, td):last-child {
+  padding-right: 0;
+}
+
+article main tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ---- Horizontal rule ---- */
+
+article main hr {
+  border: none;
+  border-top: 1px solid var(--ka-rule);
+  margin-block: 3em;
+}
+
+/* ===================================================================
+   Ledger furniture
+   -------------------------------------------------------------------
+   scripts/check-furniture.mjs holds the values below exactly, so a
+   recolour or a restyle cannot quietly drift them.
+   =================================================================== */
+
+/* A section label: small, wide-tracked, in the brand colour. */
+.ka-eyebrow {
+  font-family: var(--ka-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  color: var(--ka-brand);
+}
+
+/* A UI label: the same voice, quieter. */
+.ka-mono {
+  font-family: var(--ka-font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--ka-ink-muted);
+}
+
+/* The display face for hero and band titles. h1 gets it above; this is the
+   same voice for titles that are not an h1. Never for prose. */
+.ka-display {
+  font-family: var(--ka-font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+/* ---- Numbering ----
+   Both counters reset on article main, so they restart on every page. Only
+   an h2 inside article main increments ka-section, and the number is printed
+   by the same pseudo-element that increments it, so the marker can never
+   read 00 and a page with no h2 (the generated reference pages are shaped by
+   their generators) shows no marker at all. */
+
+article main {
+  counter-reset: ka-section ka-figure;
+}
+
+article main h2::before {
+  counter-increment: ka-section;
+  content: 'No. ' counter(ka-section, decimal-leading-zero);
+  display: block;
+  margin-bottom: 0.7rem;
+  font-family: var(--ka-font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  line-height: 1;
+  color: var(--ka-brand);
+}
+
+/* A heading that numbers itself ("## 1. Install it", a walkthrough's steps)
+   is not given a second number. Nextra's id for it starts with the digit, so
+   the marker is hidden by id. It is hidden, not removed: the pseudo-element
+   is still generated, so the counter still advances and the next unnumbered
+   section is No. 07, not No. 01; `visibility: hidden` also keeps the marker
+   out of the accessibility tree. */
+article main h2:is([id^='0-'], [id^='1-'], [id^='2-'], [id^='3-'], [id^='4-'], [id^='5-'], [id^='6-'], [id^='7-'], [id^='8-'], [id^='9-'])::before {
+  visibility: hidden;
+  height: 0;
+  margin: 0;
+}
+
+/* Verdict and RunReport carry this class on their figure label; the counter
+   lives here so it sits beside ka-section and resets with it. */
+.ka-figure::before {
+  counter-increment: ka-figure;
+  content: 'FIG. ' counter(ka-figure, decimal-leading-zero);
+  font-family: var(--ka-font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--ka-ink-muted);
+}
+
+/* ---- Atmosphere ----
+   Grain is a fixed 256px fractal-noise tile at 3.5% opacity; the aurora is
+   three blue radials under a 60px blur. Both are decoration, both are inert
+   to the pointer, and both switch off for reduced motion and print. */
+
+.ka-grain::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+/* The aurora is absolutely positioned, so its parent must provide
+   `position: relative; overflow: hidden`. Without the overflow clip the 60px
+   blur spills past the parent and can cause horizontal scroll. */
+.ka-aurora {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(125, 211, 252, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 20%, rgba(125, 211, 252, 0.05), transparent),
+    radial-gradient(ellipse 70% 60% at 50% 80%, rgba(125, 211, 252, 0.04), transparent);
+  filter: blur(60px);
+}
+
+/* ===================================================================
+   Code
+   -------------------------------------------------------------------
+   Inline code sits inside serif prose, so it needs to be optically
+   matched down, not left at its natural size.
+   =================================================================== */
+
+article main :not(pre) > code {
+  font-family: var(--ka-font-mono);
+  font-size: 0.855em;
+  background: var(--ka-paper-sunken);
+  border: 1px solid var(--ka-rule);
+  border-radius: 3px;
+  padding: 0.1em 0.34em;
+  color: var(--ka-ink);
+  word-break: break-word;
+}
+
+article main :is(p, li, dd, td, th, blockquote) a:not(.subheading-anchor) > code {
+  color: inherit;
+  border-color: var(--ka-brand-rule);
+  background: var(--ka-brand-soft);
+}
+
+/* ---- Fenced blocks ---- */
+
+article main pre {
+  font-family: var(--ka-font-mono);
+  font-size: 0.875rem;
+  line-height: 1.62;
+  background: var(--ka-paper-raised) !important;
+  border: 1px solid var(--ka-rule);
+  border-radius: var(--ka-radius-lg);
+  padding: 1.05rem 1.15rem;
+  overflow-x: auto;
+  tab-size: 2;
+  box-shadow: none;
+}
+
+/* Nextra 4 renders a fenced block as `div.nextra-code > pre`, with the
+   language, title and line-number attributes rehype-pretty-code would add
+   removed, so there is nothing to key a title bar, line numbers or a
+   console-block background to. Those rules are absent rather than left to
+   look like they apply; check-furniture.mjs fails on a selector the built
+   HTML cannot match. */
+
+/* ===================================================================
+   Sidebar
+   -------------------------------------------------------------------
+   Section labels in small caps; the active page marked with a rule in
+   the brand colour rather than a filled pill.
+   =================================================================== */
+
+.nextra-sidebar {
+  font-family: var(--ka-font-ui);
+}
+
+.nextra-sidebar :is(a, button) {
+  font-size: 0.875rem;
+}
+
+/* Top-level group headings. Nextra renders a folder as a button that is a
+   direct child of a top-level <li>; the same button one level down is a
+   nested folder and keeps the ordinary size. */
+.nextra-sidebar .nextra-scrollbar > div > ul > li > button {
+  font-size: 0.7rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.085em;
+  color: var(--ka-ink-faint) !important;
+  margin-top: 1.9rem;
+  margin-bottom: 0.45rem;
+}
+
+.nextra-sidebar a {
+  border-radius: 0 !important;
+  border-left: 2px solid transparent;
+  padding-left: 0.85rem !important;
+  color: var(--ka-ink-muted) !important;
+  background: none !important;
+  transition: color 120ms ease, border-color 120ms ease;
+  line-height: 1.45;
+}
+
+.nextra-sidebar a:hover {
+  color: var(--ka-ink) !important;
+  border-left-color: var(--ka-rule-strong);
+}
+
+/* The current page. Nextra marks it with utility classes only (no attribute,
+   no aria-current), so this keys to the one that is unique to it. */
+.nextra-sidebar a[class*='x:bg-primary-100'] {
+  color: var(--ka-brand) !important;
+  font-weight: 560;
+  border-left-color: var(--ka-brand);
+  background: none !important;
+}
+
+/* ===================================================================
+   Table of contents (right rail)
+   =================================================================== */
+
+.nextra-toc {
+  font-family: var(--ka-font-ui);
+}
+
+.nextra-toc li {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.nextra-toc a {
+  color: var(--ka-ink-faint) !important;
+  transition: color 120ms ease;
+}
+
+.nextra-toc a:hover,
+.nextra-toc a[class*='x:text-primary-600'] {
+  color: var(--ka-brand) !important;
+}
+
+/* ===================================================================
+   Navbar
+   =================================================================== */
+
+.nextra-navbar {
+  font-family: var(--ka-font-ui);
+}
+
+.nextra-navbar nav {
+  font-size: 0.875rem;
+}
+
+/* ===================================================================
+   Breadcrumbs / pagination / footer
+   =================================================================== */
+
+.nextra-breadcrumb {
+  font-family: var(--ka-font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.01em;
+  color: var(--ka-ink-faint);
+}
+
+footer {
+  font-family: var(--ka-font-ui);
+}
+
+.ka-footer p {
+  margin: 0 0 0.35rem;
+  font-size: 0.875rem;
+  color: var(--ka-ink-muted);
+}
+
+.ka-footer p:last-child {
+  margin-top: 0.8rem;
+  margin-bottom: 0;
+}
+
+/* ===================================================================
+   Focus
+   =================================================================== */
+
+:focus-visible {
+  outline: 2px solid var(--ka-brand);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ===================================================================
+   Reduced motion
+   =================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+
+  /* A fixed full-viewport noise overlay is motion-adjacent and a known
+     migraine trigger, so it goes rather than slowing down. */
+  .ka-grain::before {
+    display: none;
+  }
+
+  .ka-aurora {
+    display: none;
+  }
+}
+
+/* ===================================================================
+   Print
+   -------------------------------------------------------------------
+   The site defaults to near-black, and these reference tables get
+   printed. Force ink on paper, drop the atmosphere and the navigation,
+   and let the tokens fall back to black so nothing prints in a
+   dark-theme colour.
+   =================================================================== */
+
+@media print {
+  :root,
+  :root.dark,
+  .dark {
+    --ka-paper: #fff;
+    --ka-paper-raised: #fff;
+    --ka-paper-sunken: #fff;
+    --ka-ink: #000;
+    --ka-ink-muted: #000;
+    --ka-ink-faint: #000;
+    --ka-brand: #000;
+    --ka-brand-hover: #000;
+    --ka-brand-soft: #fff;
+    --ka-brand-rule: #999;
+    --ka-rule: #999;
+    --ka-rule-strong: #666;
+
+    /* The signal triples too. Under .dark these are light text on dark soft
+       backgrounds, and a printer drops backgrounds: a Verdict or a RunReport
+       would come out as pale text on white. The words that carry the meaning
+       (the verdict, "needs review", "failed") are in the text, not the
+       colour. */
+    --ka-refuse: #000;
+    --ka-refuse-soft: #fff;
+    --ka-refuse-rule: #999;
+    --ka-agree: #000;
+    --ka-agree-soft: #fff;
+    --ka-agree-rule: #999;
+    --ka-notice: #000;
+    --ka-notice-soft: #fff;
+    --ka-notice-rule: #999;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* The grain is a pseudo-element: .ka-grain itself is mounted on body, and
+     hiding body would print a blank page. */
+  .ka-grain::before,
+  .ka-aurora,
+  .nextra-sidebar,
+  .nextra-toc {
+    display: none !important;
+  }
+
+  article main h2::before {
+    color: #000;
+  }
+
+  /* Syntax tokens. Nextra paints each token with --shiki-light, and swaps to
+     --shiki-dark under .dark. A reader on the dark theme who prints would get
+     the dark theme's pale tokens on the white the rules above force, so print
+     always takes the light theme's, which are the ones drawn for white. The
+     token backgrounds go too, or each span would print its own panel colour. */
+  article main pre,
+  article main .nextra-code span {
+    background-color: #fff !important;
+    color: var(--shiki-light, #000) !important;
+  }
+}

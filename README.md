@@ -48,6 +48,32 @@ stored roles after any change.
   first issues). **Decisions:** `docs/adrs/`. **License:** MIT.
 - Drive it from any MCP client (25 tools), the `karani` CLI (~30 verbs), or Slack.
 
+## Documentation
+
+The full documentation site lives in [`web/`](web/) and builds to a static
+site: guides for each surface, a reference generated from karani itself,
+and all 24 architecture decision records, browsable.
+
+Three of the reference pages are generated on every build and cannot drift
+from the code: the CLI from the argparse parser, the MCP tools from
+`app.list_tools()`, and `karani.toml` from the pydantic schema. The
+decisions section is generated from `docs/adrs/`.
+
+```bash
+cd web
+npm install
+npm run dev      # http://localhost:3000
+npm run check    # build, then ten gates over the output
+```
+
+`npm run check` is the quality suite: WCAG AA contrast on every token in
+both themes, syntax colours measured against the surface code is drawn on,
+every stylesheet selector matched against the built HTML, broken links and
+dangling anchors, the sitemap against the export in both directions, and a
+gate that fails if anything from `data/resume.md` or any real posting
+reaches a built page. Every example on the site is a fabricated candidate
+applying to fabricated companies.
+
 ## Positioning (the shipped defaults — yours lives in karani.toml)
 
 Two role shapes qualify out of the box:
