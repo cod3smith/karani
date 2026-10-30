@@ -17,15 +17,19 @@ wheels/
 # OS noise
 .DS_Store
 
-# Personal data — resume.md.example is the committed template
-data/resume.md
+# Everything under data/ is yours: your resume, your transcript, and
+# every artifact a run writes there (digests, the submission console).
+# Only the .example templates are committed. This is an allowlist on
+# purpose — naming generated files one at a time let the submission
+# console, which carries real companies and presigned document URLs,
+# get committed by accident.
+data/*
+!data/*.example
 
 # Generated output
-data/digest.html
 drafts/
 logs/
 
 # Personal hunt configuration — karani.example.toml ships in the wheel
 karani.toml
 .env.backup
-data/experience.md
