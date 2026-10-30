@@ -6,7 +6,7 @@
   "scripts": {
     "generate": "sh scripts/python.sh scripts/generate_cli.py && sh scripts/python.sh scripts/generate_mcp.py && sh scripts/python.sh scripts/generate_config.py && sh scripts/python.sh scripts/generate_adrs.py && sh scripts/python.sh scripts/capture_samples.py",
     "dev": "npm run generate && next dev",
-    "build": "npm run generate && next build && pagefind --site out --output-subdir _pagefind && node scripts/generate-llms.mjs",
+    "build": "npm run generate && next build && pagefind --site out --output-subdir _pagefind && node scripts/generate-llms.mjs && node scripts/write-cname.mjs",
     "links": "node scripts/check-links.mjs",
     "seo": "node scripts/check-seo.mjs",
     "contrast": "node scripts/check-contrast.mjs",

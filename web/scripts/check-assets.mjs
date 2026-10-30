@@ -183,6 +183,24 @@ if (notFound) {
   assert(/var\(--ka-refuse\)/.test(notFound), '404.html must draw the cut stroke in var(--ka-refuse)')
 }
 
+// ---- the custom domain ------------------------------------------------------
+//
+// A GitHub Pages project site with no CNAME is served at a subpath, which
+// breaks every prose link and both icons (site.config.mjs has the
+// measurement). So a missing or disagreeing CNAME is a deploy that looks
+// successful and mostly 404s, which is worth failing the build over.
+
+const cname = readOut('CNAME')
+assert(cname !== null, 'out/CNAME is missing; the site would deploy to a subpath')
+if (cname !== null) {
+  const host = new URL(ORIGIN).hostname
+  assert(
+    cname.trim() === host,
+    `out/CNAME says "${cname.trim()}" but ORIGIN is ${ORIGIN}. The server would ` +
+      `answer on one host while every canonical pointed at another.`,
+  )
+}
+
 // ---- the search index -------------------------------------------------------
 //
 // Search is one of the three things the site has to do, and it is built by a

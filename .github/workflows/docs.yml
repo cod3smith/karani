@@ -1,0 +1,115 @@
+name: docs
+
+# Build the documentation site and publish it to GitHub Pages.
+#
+# The site is served at the custom domain in web/site.config.mjs, which is
+# not optional: a Pages *project* site with no custom domain is served at
+# cod3smith.github.io/karani, and this site's prose links are root-absolute,
+# so on a subpath every one of them 404s while the pages still render. The
+# CNAME file that makes it a zone root is written from ORIGIN by the build
+# (web/scripts/write-cname.mjs) and asserted by `npm run check`.
+#
+# Paths matter here more than they usually do. Three reference pages and the
+# whole decisions section are GENERATED from the package itself -- the
+# argparse parser, the MCP server's tool listing, the pydantic config schema
+# and docs/adrs/ -- so a change to any of those changes the site even though
+# nothing under web/ was touched.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'docs/adrs/**'
+      - 'karani/cli.py'
+      - 'karani/mcp_server/**'
+      - 'karani/config/**'
+      - 'karani/qualification/models.py'
+      - 'karani/qualification/prompts.py'
+      - 'pyproject.toml'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'docs/adrs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, and never cancel one in flight: a half-published
+# Pages deployment is worse than a queued one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # The gates run on every pull request too, so a change that breaks
+  # contrast, a link or the synthetic-data check fails before review rather
+  # than after deploy. Deployment is a separate job that only main reaches.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deliberately NOT actions/configure-pages. The usual Next-on-Pages
+      # recipe passes it `static_site_generator: next`, which injects a
+      # basePath of /<repo> into next.config -- the one thing this site
+      # must not have. Nothing else configure-pages provides is needed
+      # here, because the origin is pinned in web/site.config.mjs rather
+      # than read from the Pages API at build time.
+
+      - uses: astral-sh/setup-uv@v5
+      - name: Install karani
+        # The reference pages are generated from the package, so the build
+        # needs it importable. Base dependencies are enough -- the MCP SDK
+        # is one of them, and nothing the generators touch is behind an
+        # extra.
+        run: uv sync
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install the site's dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: web
+
+      - name: Build and check
+        # `npm run check` builds the site and then runs ten gates over the
+        # output: contrast in both themes, the mark, the furniture, every
+        # stylesheet selector against the built HTML, syntax colours, links,
+        # the generated assets and the CNAME, the synthetic-data gate, and
+        # the sitemap against the export in both directions.
+        #
+        # scripts/python.sh finds the interpreter: the repository's own
+        # .venv, which `uv sync` has just created.
+        run: npm run check
+        working-directory: web
+
+      - name: Upload the site
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/out
+
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

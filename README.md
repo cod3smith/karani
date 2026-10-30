@@ -110,6 +110,11 @@ npm run dev      # http://localhost:3000
 npm run check    # build, then ten gates over the output
 ```
 
+It deploys to GitHub Pages at
+[karani.kelynnjeri.com](https://karani.kelynnjeri.com) on every push to
+`main` that touches the site or anything it generates from — but only
+after the full check suite passes, which also runs on pull requests.
+
 `npm run check` is the quality suite: WCAG AA contrast on every token in
 both themes, syntax colours measured against the surface code is drawn on,
 every stylesheet selector matched against the built HTML, broken links and
