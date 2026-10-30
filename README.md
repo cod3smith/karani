@@ -96,7 +96,7 @@ stored roles after any change.
 
 The full documentation site lives in [`web/`](web/) and builds to a static
 site: guides for each surface, a reference generated from karani itself,
-and all 24 architecture decision records, browsable.
+and every architecture decision record, browsable.
 
 Three of the reference pages are generated on every build and cannot drift
 from the code: the CLI from the argparse parser, the MCP tools from

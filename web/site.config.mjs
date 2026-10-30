@@ -24,9 +24,13 @@
  * llms.txt is worth publishing. So the fix is a zone root (a custom domain,
  * or a user/organisation GitHub Pages site), not a basePath.
  *
+ * Which is why the default below is a subdomain of kelynnjeri.com rather
+ * than a path under it: `kelynnjeri.com/karani` would need a basePath and
+ * would break in exactly the way described above.
+ *
  * A trailing slash is stripped, so both forms work.
  */
-export const ORIGIN = (process.env.KARANI_DOCS_ORIGIN ?? 'https://karani.neoforgelabs.tech').replace(
+export const ORIGIN = (process.env.KARANI_DOCS_ORIGIN ?? 'https://karani.kelynnjeri.com').replace(
   /\/+$/,
   '',
 )

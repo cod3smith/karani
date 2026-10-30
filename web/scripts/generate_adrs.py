@@ -84,7 +84,7 @@ GIST: dict[str, str] = {
     "0018": "Why the thing that watches the pipeline cannot run inside it.",
     "0019": "Why billed work degrades to a local model instead of halting or overspending.",
     "0020": "Why the pack renders to an ATS-plain .docx and a PDF, after 121 packs produced 0 applications.",
-    "0021":"Why computational biology is in scope, and how a built-in exclusion becomes liftable.",
+    "0021": "Why computational biology is in scope, and how a built-in exclusion becomes liftable.",
     "0022": "A conversion ledger, and a promotion rule that refuses to crown a winner on noise.",
     "0023": "A static submission console, and the write-back that gives the funnel its labels.",
     "0024": "Why interview prep fires on a state change rather than on a verb.",
