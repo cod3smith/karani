@@ -1,12 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="karani">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="karani">
   <!--
-    The small variant, for anything below 32px. Thicker slabs and a
-    thicker stroke, because the display variant's 6-unit slabs land at
-    under a pixel on a 16px tab strip.
+    The small variant, for anything below 32px. Thicker bars and a
+    thicker spine, because the display variant's 9-unit bars land at
+    about two pixels on a 16px tab strip.
 
-    The letterforms default to the dark ink so the mark is visible on a
-    light tab strip, and flip to the cool off-white inside the
-    dark-scheme media query. The blue stroke is the brand in both.
+    The spine and the two long bars default to the dark ink so the mark
+    is visible on a light tab strip, and flip to the pale fill inside the
+    dark-scheme media query. The accent bar is the brand blue in both.
   -->
   <style>
     .sheet { fill: #0B0D10; }
@@ -15,10 +15,9 @@
     }
   </style>
   <g class="sheet">
-    <rect x="18" y="10" width="10" height="80" />
-    <rect x="34" y="20" width="48" height="10" />
-    <rect x="34" y="40" width="48" height="10" />
-    <rect x="34" y="60" width="30" height="10" />
+    <rect x="8" y="6" width="12" height="52" rx="6" />
+    <rect x="26" y="6" width="30" height="12" rx="6" />
+    <rect x="26" y="26" width="22" height="12" rx="6" />
   </g>
-  <polygon points="18,78 82,70 82,84 18,92" fill="#7DD3FC" />
+  <rect x="26" y="46" width="12" height="12" rx="6" fill="#7DD3FC" />
 </svg>

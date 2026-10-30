@@ -10,8 +10,9 @@ import { ImageResponse } from 'next/og'
  * this icon itself.
  *
  * It draws the SMALL variant of the mark (geometry of public/favicon.svg):
- * thicker slabs and a thicker stroke, because the display variant's 6-unit
- * slabs thin out to hairlines at this size. iOS rounds the corners itself,
+ * thicker bars, because the display variant's 9-unit bars thin out at this
+ * size. The inset matches the brand kit's own app icon, which pads the
+ * 64-unit mark by a quarter of the square. iOS rounds the corners itself,
  * so the plate is full bleed. Colours are literals: next/og reads no CSS.
  *
  * The home screen is where this icon matters most -- the submission console
@@ -34,14 +35,13 @@ export function GET() {
           background: '#0B0D10',
         }}
       >
-        <svg width="128" height="128" viewBox="0 0 100 100" fill="none">
+        <svg width="128" height="128" viewBox="0 0 64 64" fill="none">
           <g fill="#F6F7F9">
-            <rect x="18" y="10" width="10" height="80" />
-            <rect x="34" y="20" width="48" height="10" />
-            <rect x="34" y="40" width="48" height="10" />
-            <rect x="34" y="60" width="30" height="10" />
+            <rect x="8" y="6" width="12" height="52" rx="6" />
+            <rect x="26" y="6" width="30" height="12" rx="6" />
+            <rect x="26" y="26" width="22" height="12" rx="6" />
           </g>
-          <polygon points="18,78 82,70 82,84 18,92" fill="#7DD3FC" />
+          <rect x="26" y="46" width="12" height="12" rx="6" fill="#7DD3FC" />
         </svg>
       </div>
     ),

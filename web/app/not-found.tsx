@@ -14,19 +14,17 @@ export const metadata: Metadata = {
 }
 
 /*
- * The 404 is the one place the mark is allowed to be an empty sheet.
+ * The 404 is the one place the mark is allowed to go wrong.
  *
- * It is the same filed sheet as the mark -- spine, ruled lines -- but the
- * rules are gone and the stroke across the foot is cut in two and offset,
- * drawn in the refusal colour instead of the brand blue. karani's job is to
- * fill a sheet in; an address that holds no page is a sheet that was never
- * filed.
+ * It is the same list as the mark -- spine, two bars -- but the last bar,
+ * the one karani normally stops at for a signature, is drawn in the
+ * refusal colour instead of the brand blue. The mark says "filled in down
+ * to the line that is yours"; this says the line is not there.
  *
- * Geometry is public/icon.svg's. The stroke is the original slanted polygon
- * cut at x=48 and x=54, the right-hand half dropped 6 units. Static export
+ * Geometry is public/icon.svg's display variant, unchanged. Static export
  * turns this into out/404.html, which GitHub Pages serves for any unknown
- * path. It is exempt from scripts/check-links.mjs's orphan rule, so it needs
- * no navigation entry.
+ * path. It is exempt from scripts/check-links.mjs's orphan rule, so it
+ * needs no navigation entry.
  */
 export default function NotFound() {
   return (
@@ -43,18 +41,17 @@ export default function NotFound() {
       <svg
         width="120"
         height="120"
-        viewBox="0 0 100 100"
+        viewBox="0 0 64 64"
         fill="none"
         aria-hidden="true"
         style={{ color: 'var(--ka-ink)' }}
       >
         <g fill="currentColor">
-          <rect x="22" y="12" width="7" height="76" />
+          <rect x="10" y="8" width="9" height="48" rx="4.5" />
+          <rect x="27" y="8" width="28" height="9" rx="4.5" />
+          <rect x="27" y="27.5" width="20" height="9" rx="4.5" />
         </g>
-        <g fill="var(--ka-refuse)">
-          <polygon points="22,80 48,76.75 48,84.75 22,88" />
-          <polygon points="54,81.75 78,79 78,87 54,90.75" />
-        </g>
+        <rect x="27" y="47" width="9" height="9" rx="4.5" fill="var(--ka-refuse)" />
       </svg>
       <h1
         style={{

@@ -82,14 +82,13 @@ async function loadFonts(text: string): Promise<Font[]> {
 /* The display mark, geometry from public/icon.svg, as Satori-friendly SVG. */
 function DisplayMark({ px }: { px: number }) {
   return (
-    <svg width={px} height={px} viewBox="0 0 100 100" fill="none">
+    <svg width={px} height={px} viewBox="0 0 64 64" fill="none">
       <g fill={PAPER}>
-        <rect x="22" y="12" width="7" height="76" />
-        <rect x="35" y="22" width="43" height="6" />
-        <rect x="35" y="40" width="43" height="6" />
-        <rect x="35" y="58" width="28" height="6" />
+        <rect x="10" y="8" width="9" height="48" rx="4.5" />
+        <rect x="27" y="8" width="28" height="9" rx="4.5" />
+        <rect x="27" y="27.5" width="20" height="9" rx="4.5" />
       </g>
-      <polygon points="22,80 78,73 78,81 22,88" fill={BLUE} />
+      <rect x="27" y="47" width="9" height="9" rx="4.5" fill={BLUE} />
     </svg>
   )
 }
